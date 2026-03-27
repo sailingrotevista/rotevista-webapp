@@ -1,16 +1,15 @@
-# React + Vite
+# Rotevista Master Dash 🐾
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Private Marine Dashboard for SignalK.
 
-Currently, two official plugins are available:
+## Features
+- **Home**: Real-time monitoring of Power, Environment and Navigation.
+- **Energy**: SOC 24h charts and 7-day Min/Max analysis.
+- **Environment**: Apparent and True wind gauges.
+- **Controls**: Interactive switches for pumps, boiler and more.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Installation
+Install directly via the SignalK App Store.
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Technical Setup
+This app connects to a Node-RED API at `https://192.168.111.240:1881/api/boat`.
