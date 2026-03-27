@@ -1,34 +1,46 @@
 {
-  "name": "@sailingrotevista/rotevista-dash",
-  "private": true,
-  "version": "0.0.0",
+  "name": "@sailingrotevista/rotevista-webapp",
+  "private": false,
+  "version": "1.0.0",
   "type": "module",
+  "description": "Master Marine Dashboard for Rotevista - Monitoring Power, Solar, Environment and Navigation.",
+  "author": "Alessio Tosi",
+  "license": "MIT",
+  "main": "dist/index.html",
+  "files": [
+    "dist",
+    "AppIcon.png"
+  ],
+  "keywords": [
+    "signalk-node-server",
+    "signalk-webapp",
+    "marine"
+  ],
+  "signalk": {
+    "appIcon": "./AppIcon.png",
+    "displayName": "Rotevista Master Dash"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
+    "framer-motion": "^11.0.0",
     "leaflet": "^1.9.4",
-    "lucide-react": "^1.7.0",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
-    "react-leaflet": "^5.0.0",
-    "recharts": "^3.8.1"
+    "lucide-react": "^0.344.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-leaflet": "^4.2.1",
+    "recharts": "^2.12.0"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.4",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.1",
-    "autoprefixer": "^10.4.27",
-    "eslint": "^9.39.4",
-    "eslint-plugin-react-hooks": "^7.0.1",
-    "eslint-plugin-react-refresh": "^0.5.2",
-    "globals": "^17.4.0",
-    "postcss": "^8.5.8",
-    "tailwindcss": "^4.2.2",
-    "vite": "^8.0.1"
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.22",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.18",
+    "postcss": "^8.4.35",
+    "tailwindcss": "^3.4.1",
+    "vite": "^5.1.4"
   }
 }

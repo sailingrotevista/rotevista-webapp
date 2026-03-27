@@ -1,10 +1,42 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
 body {
   background-color: #121212;
   color: white;
   margin: 0;
   padding: 0;
+  user-select: none;
+  overflow-x: hidden;
+}
+
+/* Rimosso l'invert(100%) per far vedere i colori reali del satellite */
+.leaflet-container {
+    background: #1a1a1a !important;
+}
+
+.boat-marker {
+    background: transparent !important;
+    border: none !important;
+}
+
+/* Opzionale: scurisce leggermente i tasti delle mappe per non farli sparire */
+.leaflet-control-container .leaflet-control {
+    border: none !important;
+    box-shadow: 0 0 10px rgba(0,0,0,0.5) !important;
+}
+/* Forza Leaflet a occupare tutto lo spazio del suo contenitore */
+.leaflet-container {
+    width: 100%;
+    height: 100%;
+    outline: none;
+}
+
+/* Evita che le immagini (tiles) abbiano bordi o ombre strane che creano righe bianche */
+.leaflet-tile-container img {
+    box-shadow: 0 0 1px rgba(0,0,0,0.05);
+}
+
+/* Assicura che la barca sia sempre sopra tutto */
+.boat-marker {
+    z-index: 1000 !important;
 }
