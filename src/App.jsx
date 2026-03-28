@@ -5,6 +5,7 @@ import { useBoatData } from './hooks/useBoatData';
 import HomeView from './views/HomeView';
 import EnergyView from './views/EnergyView';
 import EnvironmentView from './views/EnvironmentView';
+import logo from './assets/AppIcon.png'; // Vite ora sa che questo file esiste e lo gestirà lui
 
 function App() {
   const [selectedTab, setSelectedTab] = useState(0);
@@ -56,7 +57,7 @@ function App() {
       >
         <div className="flex items-center gap-3">
           <img
-            src="/AppIcon.png"
+            src={logo}
             alt="Logo"
             className="w-9 h-9 rounded-lg object-cover bg-white/10"
             onError={(e) => { e.target.src = "https://via.placeholder.com/36?text=Logo"; }}

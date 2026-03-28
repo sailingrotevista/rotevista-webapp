@@ -1,6 +1,7 @@
 # Rotevista Master Dash 🐾
 
 Private Marine Dashboard for SignalK.
+Rotevista Specific, sorry!
 
 ## Features
 - **Home**: Real-time monitoring of Power, Environment and Navigation.

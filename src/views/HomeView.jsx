@@ -7,9 +7,7 @@ import {
   AlertTriangle, ChevronRight
 } from 'lucide-react';
 
-// ============================================================
-// 1. CONFIGURAZIONE ICONA BARCA
-// ============================================================
+// --- CONFIGURAZIONE ICONA BARCA ---
 const boatIcon = new L.DivIcon({
     html: `<div style="font-size: 30px; filter: drop-shadow(0 0 5px black);">⛵</div>`,
     className: 'boat-marker',
@@ -17,27 +15,23 @@ const boatIcon = new L.DivIcon({
     iconAnchor: [15, 15]
 });
 
-// ============================================================
-// 2. LOGICHE COLORE DINAMICO (DA IOS)
-// ============================================================
+// --- LOGICHE COLORE DINAMICO ---
 const getFridgeColor = (t) => {
     if (t === undefined || t === null) return 'text-white';
     if (t < 1) return 'text-blue-400';
     if (t <= 8) return 'text-white';
-    if (t <= 10) return 'text-orange-500';
+    if (t <= 12) return 'text-orange-500';
     return 'text-red-500';
 };
 
 const getFreezerColor = (t) => {
     if (t === undefined || t === null) return 'text-white';
     if (t < -2) return 'text-white';
-    if (t <= 1) return 'text-orange-500';
+    if (t <= 2) return 'text-orange-500';
     return 'text-red-500';
 };
 
-// ============================================================
-// 3. PLUGIN CONTROLLI MAPPA
-// ============================================================
+// --- PLUGIN LOGICA MAPPA ---
 const MapPlugins = ({ coords, trail, autoFollow, setAutoFollow }) => {
     const map = useMap();
     useMapEvents({
@@ -58,20 +52,25 @@ const MapPlugins = ({ coords, trail, autoFollow, setAutoFollow }) => {
         <>
             {trail.length > 0 && <Polyline positions={trail} color="#22d3ee" weight={5} opacity={0.8} lineCap="round" />}
             <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-3 z-[1000]">
-                <button onClick={(e) => { e.stopPropagation(); setAutoFollow(false); map.zoomIn(); }} className="w-12 h-12 rounded-2xl bg-black/40 backdrop-blur-md border border-white/10 flex items-center justify-center text-white active:scale-90 transition-all shadow-lg"><Plus size={24} /></button>
-                <button onClick={(e) => { e.stopPropagation(); setAutoFollow(false); map.zoomOut(); }} className="w-12 h-12 rounded-2xl bg-black/40 backdrop-blur-md border border-white/10 flex items-center justify-center text-white active:scale-90 transition-all shadow-lg"><Minus size={24} /></button>
-                <button onClick={(e) => { e.stopPropagation(); setAutoFollow(true); map.setView(coords, 18, { animate: true }); }} className={`w-12 h-12 rounded-2xl backdrop-blur-md border transition-all flex items-center justify-center active:scale-90 shadow-lg ${autoFollow ? 'bg-cyan-500/30 border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.4)]' : 'bg-black/40 border-white/10'}`}><Target size={24} className={autoFollow ? "text-cyan-400" : "text-white"} /></button>
+                <button onClick={(e) => { e.stopPropagation(); setAutoFollow(false); map.zoomIn(); }} className="w-12 h-12 rounded-2xl bg-black/40 backdrop-blur-md border border-white/10 flex items-center justify-center text-white shadow-lg"><Plus size={24} /></button>
+                <button onClick={(e) => { e.stopPropagation(); setAutoFollow(false); map.zoomOut(); }} className="w-12 h-12 rounded-2xl bg-black/40 backdrop-blur-md border border-white/10 flex items-center justify-center text-white shadow-lg"><Minus size={24} /></button>
+                <button onClick={(e) => { e.stopPropagation(); setAutoFollow(true); map.setView(coords, 18, { animate: true }); }} className={`w-12 h-12 rounded-2xl backdrop-blur-md border transition-all flex items-center justify-center shadow-lg ${autoFollow ? 'bg-cyan-500/30 border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.4)]' : 'bg-black/40 border-white/10'}`}><Target size={24} className={autoFollow ? "text-cyan-400" : "text-white"} /></button>
             </div>
         </>
     );
 };
 
-// ============================================================
-// 4. VISTA PRINCIPALE HOME
-// ============================================================
+// --- VISTA PRINCIPALE HOME ---
 const HomeView = ({ manager }) => {
-    const { data, toggleSwitch, isDataStale, apiUrl } = manager;
+    const { data, toggleSwitch, apiUrl, error } = manager;
     const [autoFollow, setAutoFollow] = useState(true);
+    const [showSSLModal, setShowSSLModal] = useState(false);
+
+    // Mostra la modale SOLO se c'è un errore di connessione/SSL
+    useEffect(() => {
+        if (error) setShowSSLModal(true);
+        else setShowSSLModal(false);
+    }, [error]);
 
     const lat = parseFloat(data?.gps?.lat) || 36.78;
     const lon = parseFloat(data?.gps?.lon) || 14.54;
@@ -81,18 +80,24 @@ const HomeView = ({ manager }) => {
     return (
         <div className="p-4 space-y-6">
 
-            {/* ALLARME CONNESSIONE */}
-            {isDataStale && (
-                <button onClick={() => window.open(`${apiUrl}`, '_blank')} className="w-full bg-red-500/90 hover:bg-red-600 text-white p-4 rounded-2xl flex items-center justify-between shadow-lg transition-all active:scale-[0.98]">
-                    <div className="flex items-center gap-3">
-                        <div className="bg-white/20 p-2 rounded-full"><AlertTriangle size={20} /></div>
-                        <div className="text-left">
-                            <p className="font-black text-sm uppercase tracking-tight">Dati Scaduti</p>
-                            <p className="text-[10px] opacity-80 font-bold uppercase">Tocca per sbloccare certificato SSL</p>
+            {/* --- MODALE SBLOCCO SSL (Appare solo su errore) --- */}
+            {showSSLModal && (
+                <div className="fixed inset-0 z-[5000] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md">
+                    <div className="bg-[#1a1a1a] border border-white/10 p-8 rounded-[2.5rem] shadow-2xl max-w-sm w-full text-center space-y-6">
+                        <div className="bg-red-500/20 w-16 h-16 rounded-full flex items-center justify-center mx-auto"><AlertTriangle size={32} className="text-red-500" /></div>
+                        <div className="space-y-2">
+                            <h2 className="text-xl font-black uppercase tracking-tight text-white">Sicurezza API</h2>
+                            <p className="text-gray-400 text-xs font-bold leading-relaxed px-4">Autorizza il certificato della barca per ricevere i dati in tempo reale.</p>
+                        </div>
+                        <div className="space-y-3 pt-2">
+                            <button onClick={() => window.open(`${apiUrl}`, '_blank')} className="w-full bg-red-500 hover:bg-red-600 text-white font-black py-4 rounded-2xl transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2">
+                                <Navigation size={18} className="rotate-90" /> 1. AUTORIZZA SSL
+                            </button>
+                            <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">Poi chiudi Safari e torna qui</p>
+                            <button onClick={() => setShowSSLModal(false)} className="w-full bg-white/5 hover:bg-white/10 text-white font-black py-3 rounded-2xl transition-all border border-white/10 active:scale-95">2. CHIUDI</button>
                         </div>
                     </div>
-                    <ChevronRight size={18} className="opacity-50" />
-                </button>
+                </div>
             )}
             
             {/* 1. POWER */}
@@ -101,7 +106,7 @@ const HomeView = ({ manager }) => {
                 <StatusBox title="BANCHINA" icon={<Power className={data?.power?.shore_power ? "text-green-500" : "text-red-500"}/>} value={data?.power?.shore_power ? "ON" : "OFF"} sub="230V AC" />
             </div>
 
-            {/* 2. TEMPERATURE (Ordine originale iOS e Colori Dinamici) */}
+            {/* 2. TEMPERATURE (Pozzetto, Quadrato, Frigo, Freezer) */}
             <div className="grid grid-cols-4 gap-2">
                 <TempCard icon={<Thermometer size={18}/>} title="POZZ." val={data?.environment?.temp_pozzetto} color="text-yellow-500" />
                 <TempCard icon={<Sofa size={18}/>} title="QUADR." val={data?.environment?.temp_quadrato} color="text-orange-500" />
@@ -116,13 +121,12 @@ const HomeView = ({ manager }) => {
                 <QuickActionRow icon={<Shirt className="text-purple-400"/>} name="Lavatrice" isOn={data?.switches?.washing_machine_on} onToggle={(v) => toggleSwitch('washer', v)} />
             </div>
 
-            {/* 4. MAPPA SAT (80% Centrata) */}
+            {/* 4. MAPPA SAT (80% LARGA E CENTRATA) */}
             <div className="space-y-3 pb-32 flex flex-col items-center">
                 <div className="flex justify-between items-center w-[80%] px-2">
-                    <h3 className="text-[10px] font-black text-gray-500 tracking-widest uppercase font-mono">Posizione GPS</h3>
-                    <button onClick={() => window.open(`maps://?q=${lat},${lon}`, '_blank')} className="text-[10px] font-black bg-cyan-500/10 text-cyan-400 px-3 py-1 rounded-full border border-cyan-500/20 flex items-center gap-2 uppercase tracking-tight"><Navigation size={12} /> Apri in Mappe</button>
+                    <h3 className="text-[10px] font-black text-gray-500 tracking-widest uppercase font-mono opacity-50">Posizione GPS</h3>
+                    <button onClick={() => window.open(`maps://?q=${lat},${lon}`, '_blank')} className="text-[9px] font-black bg-cyan-500/10 text-cyan-400 px-3 py-1 rounded-full border border-cyan-500/20 flex items-center gap-1 uppercase"><Navigation size={10} /> Apri in Mappe</button>
                 </div>
-                
                 <div onPointerDown={(e) => e.stopPropagation()} onPointerMove={(e) => e.stopPropagation()} className="h-80 w-[80%] rounded-[2.5rem] overflow-hidden border border-white/10 shadow-2xl relative isolate touch-none">
                     <MapContainer center={coords} zoom={17} maxZoom={20} style={{ height: '100%', width: '100%' }} zoomControl={false} attributionControl={false}>
                         <TileLayer url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" maxZoom={20} maxNativeZoom={19} />
@@ -135,9 +139,7 @@ const HomeView = ({ manager }) => {
     );
 };
 
-// ============================================================
-// 5. COMPONENTI UI
-// ============================================================
+// --- COMPONENTI UI ---
 const StatusBox = ({ icon, title, value, sub }) => (
     <div className="bg-white/5 p-5 rounded-[2rem] border border-white/10 flex flex-col shadow-lg text-white">
         <div className="flex items-center gap-1 text-gray-500 text-[9px] font-black tracking-widest uppercase">{icon} {title}</div>

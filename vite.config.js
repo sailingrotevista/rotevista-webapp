@@ -3,9 +3,15 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  base: './', // Fondamentale per SignalK
+  base: './',
+  server: {
+    watch: {
+      // Ignora la cartella public e node_modules per evitare riavvii infiniti
+      ignored: ['**/public/**', '**/node_modules/**'],
+    },
+  },
   build: {
-    outDir: 'public', // Cambiamo dist in public per SignalK
+    outDir: 'public',
     emptyOutDir: true,
   }
 })

@@ -8,7 +8,7 @@ import { Sun, History, TrendingUp } from 'lucide-react';
 
 const EnergyView = ({ manager }) => {
   const { data } = manager;
-  if (!data) return <div className="p-20 text-center opacity-30 font-mono text-sm">Caricamento...</div>;
+  if (!data) return <div className="p-20 text-center opacity-30 font-mono text-sm">Caricamento dati energia...</div>;
 
   // --- LOGICA PREPARAZIONE DATI SOC ---
   const rawHistory = data.power.soc_history_24h;
@@ -37,7 +37,8 @@ const EnergyView = ({ manager }) => {
         
         <div className="h-56 w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData} margin={{ top: 25, right: 70, left: 30, bottom: 20 }}>
+            {/* Margini ottimizzati: left ridotto a 0 e right a 45 per massima larghezza */}
+            <AreaChart data={chartData} margin={{ top: 25, right: 65, left: 0, bottom: 10 }}>
               <defs>
                 <linearGradient id="colorSoc" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor={currentSoc < 40 ? "#ef4444" : "#22c55e"} stopOpacity={0.4}/>
@@ -53,6 +54,7 @@ const EnergyView = ({ manager }) => {
                 tick={{fill: '#666', fontSize: 11, fontWeight: 'bold'}}
                 axisLine={false}
                 tickLine={false}
+                width={27} // Fissa la larghezza dell'asse per recuperare spazio
               />
               
               <XAxis dataKey="index" hide />
@@ -73,7 +75,7 @@ const EnergyView = ({ manager }) => {
                 label={{ position: 'bottom', value: `${minVal.toFixed(0)}%`, fill: '#ef4444', fontSize: 10, fontWeight: 'bold', dy: 10 }}
               />
               <ReferenceDot x={lastIdx} y={currentSoc} r={6} fill="#fff" stroke="#06b6d4" strokeWidth={2}
-                label={{ position: 'right', value: `${currentSoc.toFixed(1)}%`, fill: '#fff', fontSize: 13, fontWeight: '900', dx: 15 }}
+                label={{ position: 'right', value: `${currentSoc.toFixed(1)}%`, fill: '#fff', fontSize: 13, fontWeight: '900', dx: 12 }}
               />
             </AreaChart>
           </ResponsiveContainer>
@@ -111,7 +113,7 @@ const EnergyView = ({ manager }) => {
 
 
       {/* ============================================================
-          BLOCCO 3: MIN/MAX SETTIMANALE (GRADIENTE REALE)
+          BLOCCO 3: MIN/MAX SETTIMANALE
           ============================================================ */}
       <div className="bg-white/5 p-5 rounded-[2rem] border border-white/10 shadow-2xl">
         <h3 className="text-[10px] font-black font-mono text-cyan-400 mb-6 flex items-center gap-2 tracking-widest uppercase">
@@ -120,7 +122,8 @@ const EnergyView = ({ manager }) => {
         
         <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={weeklyData} margin={{ top: 25, right: 10, left: 10, bottom: 40 }}>
+                {/* Margini ridotti a 0 per occupare tutta la larghezza del contenitore */}
+                <BarChart data={weeklyData} margin={{ top: 25, right: 0, left: 0, bottom: 40 }}>
                     <defs>
                         {weeklyData.map((d, i) => {
                             const range = d.max - d.min || 1;
@@ -140,9 +143,9 @@ const EnergyView = ({ manager }) => {
 
                     <CartesianGrid strokeDasharray="3 3" stroke="#ffffff40" vertical={false} />
                     <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fill: '#666', fontSize: 11, fontWeight: 'bold'}} />
-                    <YAxis domain={[0, 100]} ticks={[0, 50, 100]} tick={{fill: '#444', fontSize: 10, fontWeight: 'bold'}} axisLine={false} tickLine={false} />
+                    <YAxis domain={[0, 100]} ticks={[0, 50, 100]} hide />
 
-                    <Bar dataKey={(d) => [d.min, d.max]} radius={[6, 6, 6, 6]} barSize={16} isAnimationActive={false}>
+                    <Bar dataKey={(d) => [d.min, d.max]} radius={[6, 6, 6, 6]} barSize={18} isAnimationActive={false}>
                         {weeklyData.map((entry, index) => (
                             <Cell key={`cell-${index}`} fill={`url(#grad-${index})`} />
                         ))}
