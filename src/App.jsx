@@ -94,7 +94,7 @@ function App() {
             }}
             className="absolute inset-0 w-full h-full overflow-y-auto px-1"
           >
-            {selectedTab === 0 && <HomeView manager={manager} />}
+            {selectedTab === 0 && <HomeView manager={manager} onTabChange={changeTab} />}
             {selectedTab === 1 && <EnergyView manager={manager} />}
             {selectedTab === 2 && <EnvironmentView manager={manager} />}
             {selectedTab === 3 && <AdvancedView manager={manager} />}
