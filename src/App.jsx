@@ -5,6 +5,7 @@ import { useBoatData } from './hooks/useBoatData';
 import HomeView from './views/HomeView';
 import EnergyView from './views/EnergyView';
 import EnvironmentView from './views/EnvironmentView';
+import AdvancedView from './views/AdvancedView';
 import logo from './assets/AppIcon.png'; // Vite ora sa che questo file esiste e lo gestirà lui
 
 function App() {
@@ -96,11 +97,7 @@ function App() {
             {selectedTab === 0 && <HomeView manager={manager} />}
             {selectedTab === 1 && <EnergyView manager={manager} />}
             {selectedTab === 2 && <EnvironmentView manager={manager} />}
-            {selectedTab === 3 && (
-              <div className="p-20 text-center opacity-30 font-mono text-sm uppercase tracking-widest text-gray-500">
-                Controlli Avanzati <br/> In Arrivo
-              </div>
-            )}
+            {selectedTab === 3 && <AdvancedView manager={manager} />}
           </motion.div>
         </AnimatePresence>
       </main>
