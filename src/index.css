@@ -40,3 +40,31 @@ body {
 .boat-marker {
     z-index: 1000 !important;
 }
+
+/* --- NIGHT MODE FILTER (Versione Ottimizzata) --- */
+.night-mode-active {
+  /* Usiamo brightness 0.6 per non abbagliare e saturate 600% per un rosso più puro */
+  filter: grayscale(100%) brightness(0.6) sepia(100%) hue-rotate(-50deg) saturate(600%) contrast(1.1);
+  background-color: black !important;
+  transition: filter 0.7s ease-in-out;
+}
+
+/* Mantengo la tua ottima idea del testo per la leggibilità */
+.night-mode-active text,
+.night-mode-active span,
+.night-mode-active h1,
+.night-mode-active h2,
+.night-mode-active h3 {
+  text-shadow: 0 0 2px rgba(255, 0, 0, 0.3);
+}
+
+/* MODIFICA CHIAVE: Evitiamo che la mappa satellitare diventi illeggibile */
+/* Aumentiamo il contrasto solo sulla mappa quando il filtro rosso è attivo */
+.night-mode-active .leaflet-container img {
+    filter: contrast(1.4) brightness(1.1);
+}
+
+/* Rendiamo l'icona della barca (emoji) più visibile nel buio rosso */
+.night-mode-active .boat-marker {
+    filter: drop-shadow(0 0 5px red) brightness(1.5);
+}
