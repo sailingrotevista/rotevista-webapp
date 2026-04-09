@@ -49,7 +49,7 @@ const MapPlugins = ({ coords, trail, autoFollow, setAutoFollow }) => {
     return (
         <>
             {trail.length > 0 && <Polyline positions={trail} color="#22d3ee" weight={5} opacity={0.8} lineCap="round" />}
-            <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-3 z-[1000]">
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-4 z-[1000]">
                 <button onClick={(e) => { e.stopPropagation(); setAutoFollow(false); map.zoomIn(); }} className="w-12 h-12 rounded-2xl bg-black/40 backdrop-blur-md border border-white/10 flex items-center justify-center text-white shadow-lg active:scale-90 transition-all"><Plus size={24} /></button>
                 <button onClick={(e) => { e.stopPropagation(); setAutoFollow(false); map.zoomOut(); }} className="w-12 h-12 rounded-2xl bg-black/40 backdrop-blur-md border border-white/10 flex items-center justify-center text-white shadow-lg active:scale-90 transition-all"><Minus size={24} /></button>
                 <button onClick={(e) => { e.stopPropagation(); setAutoFollow(true); map.setView(coords, 18, { animate: true }); }} className={`w-12 h-12 rounded-2xl backdrop-blur-md border transition-all flex items-center justify-center shadow-lg ${autoFollow ? 'bg-cyan-500/30 border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.4)]' : 'bg-black/40 border-white/10'}`}><Target size={24} className={autoFollow ? "text-cyan-400" : "text-white"} /></button>
@@ -74,7 +74,7 @@ const HomeView = ({ manager, onTabChange }) => {
     const trail = data?.environment?.gps_history ? data.environment.gps_history.map(h => [parseFloat(h.lat), parseFloat(h.lon)]) : [];
 
     return (
-        <div className="px-4 pt-2 pb-4 landscape:p-2 landscape:pt-0 space-y-4 landscape:space-y-3">
+        <div className="px-2 pt-2 pb-4 landscape:p-2 landscape:pt-4 space-y-2 landscape:space-y-2">
 
             {/* MODALE SSL */}
             {showSSLModal && (
@@ -85,7 +85,7 @@ const HomeView = ({ manager, onTabChange }) => {
                             <h2 className="text-xl font-black uppercase tracking-tight text-white font-mono">Sicurezza API</h2>
                             <p className="text-gray-400 text-xs font-bold leading-relaxed px-4">Autorizza il certificato per ricevere i dati.</p>
                         </div>
-                        <div className="space-y-3 pt-2">
+                        <div className="space-y-3 pt-200">
                             <button onClick={() => window.open(`${apiUrl}`, '_blank')} className="w-full bg-red-500 hover:bg-red-600 text-white font-black py-4 rounded-2xl shadow-lg active:scale-95 uppercase text-xs font-mono">1. Autorizza SSL</button>
                             <button onClick={() => setShowSSLModal(false)} className="w-full bg-white/5 text-white font-black py-3 rounded-2xl border border-white/10 active:scale-95 uppercase text-xs font-mono">2. Ho fatto</button>
                         </div>
@@ -94,7 +94,7 @@ const HomeView = ({ manager, onTabChange }) => {
             )}
             
             {/* SEZIONE 1: ENERGIA */}
-            <div className="grid grid-cols-2 gap-3 landscape:gap-2">
+            <div className="grid grid-cols-2 gap-2 landscape:gap-2">
                 <div onClick={() => onTabChange(1)} className="cursor-pointer active:scale-95 transition-transform">
                     <StatusBox title="BATTERIA" icon={<Battery className="text-green-500"/>} value={`${data?.power?.soc?.toFixed(1) || '-'}%`} sub={<>{data?.power?.dc_draw_w || 0}<span className="opacity-40 ml-0.5 font-bold uppercase">w</span></>} />
                 </div>
@@ -116,7 +116,7 @@ const HomeView = ({ manager, onTabChange }) => {
             </div>
 
             {/* SEZIONE 2 & 3: TEMPERATURE E INTERRUTTORI */}
-            <div className="flex flex-col md:flex-row gap-4 landscape:gap-3 w-full">
+            <div className="flex flex-col md:flex-row gap-2 landscape:gap-2 w-full">
                 <div className="w-full md:w-1/2 grid grid-cols-4 md:grid-cols-2 gap-2">
                     <div onClick={() => onTabChange(2)} className="cursor-pointer active:scale-95 transition-transform h-full">
                         <TempCard icon={<Thermometer size={18}/>} title="POZZ." val={data?.environment?.temp_pozzetto} color="text-yellow-500" />
@@ -134,7 +134,7 @@ const HomeView = ({ manager, onTabChange }) => {
             </div>
 
             {/* SEZIONE 4: MAPPA */}
-            <div className="space-y-3 pb-32 flex flex-col items-center">
+            <div className="space-y-2 pb-22 flex flex-col items-center">
                 <div className="flex justify-between items-center w-[80%] px-2">
                     <h3 className="text-[10px] font-black text-gray-500 tracking-widest uppercase font-mono opacity-50">Posizione GPS</h3>
                     <button onClick={() => window.open(`maps://?q=${lat},${lon}`, '_blank')} className="text-[9px] font-black bg-cyan-500/10 text-cyan-400 px-3 py-1 rounded-full border border-cyan-500/20 flex items-center gap-1 uppercase active:scale-95 transition-transform"><Navigation size={10} /> Apri in Mappe</button>

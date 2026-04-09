@@ -48,11 +48,11 @@ function App() {
       {/* HEADER FISSO: Altezza ridotta in landscape per recuperare spazio */}
       <header
         onDoubleClick={toggleFullscreen}
-        className="fixed top-0 left-0 right-0 z-[1000] bg-[#121212]/80 backdrop-blur-lg border-b border-white/10 px-4 py-2 landscape:py-1.5 flex items-center justify-between cursor-pointer"
-      >
+        className="fixed top-0 left-0 right-0 z-[1000] h-16 bg-[#121212]/80 backdrop-blur-lg border-b border-white/10 px-4 flex items-center justify-between cursor-pointer">
         <div className="flex items-center gap-3">
-          <img src={logo} alt="Logo" className="w-8 h-8 landscape:w-7 landscape:h-7 rounded-lg object-cover bg-white/10 shadow-lg" />
-          <h1 className="text-xl landscape:text-lg font-black tracking-widest uppercase font-mono text-white text-shadow-sm">ROTEVISTA</h1>
+          {/* Logo e Titolo mantengono la stessa dimensione in ogni orientamento */}
+          <img src={logo} alt="Logo" className="w-9 h-9 rounded-lg object-cover bg-white/10 shadow-lg" />
+          <h1 className="text-xl font-black tracking-widest uppercase font-mono text-white">ROTEVISTA</h1>
         </div>
         
         <div className="flex items-center gap-3">
@@ -79,7 +79,7 @@ function App() {
       </header>
 
       {/* MAIN: Margine mt-16 ridotto a mt-12 in landscape per non far scivolare i blocchi */}
-      <main className="flex-1 relative mt-14 landscape:mt-15 pb-32 h-full w-full">
+      <main className="flex-1 relative mt-13 landscape:mt-14 pb-32 h-full w-full">
         <AnimatePresence initial={false} custom={direction}>
           <motion.div
             key={selectedTab}
