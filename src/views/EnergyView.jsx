@@ -25,7 +25,7 @@ const EnergyView = ({ manager }) => {
   const weeklyData = data.power.soc_history_7d_minmax;
 
   return (
-    <div className="px-2 pt-5 p-2 space-y-2 pb-23 landscape:pt-4">
+    <div className="px-2 pt-5 pb-24 landscape:pt-4 space-y-2">
       
       {/* CONTENITORE RESPONSIVO PER I PRIMI DUE BLOCCHI */}
       <div className="flex flex-col landscape:flex-row gap-2 w-full">

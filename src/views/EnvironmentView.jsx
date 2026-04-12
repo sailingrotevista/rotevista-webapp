@@ -40,7 +40,7 @@ const EnvironmentView = ({ manager }) => {
     const windPerc = Math.min(100, (env.wind_now / Math.max(env.wind_max_30m, 1)) * 100);
 
     return (
-        <div className="px-2 pt-5 p-2 space-y-2 pb-23 landscape:pt-4 text-white">
+        <div className="px-2 pt-5 pb-24 landscape:pt-4 space-y-2 text-white">
             
             {/* --- RIGA 1: VENTO E BUSSOLE --- */}
             <div className="grid grid-cols-2 landscape:grid-cols-4 gap-2">
