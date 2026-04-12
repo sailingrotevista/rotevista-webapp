@@ -74,20 +74,37 @@ const HomeView = ({ manager, onTabChange }) => {
     const trail = data?.environment?.gps_history ? data.environment.gps_history.map(h => [parseFloat(h.lat), parseFloat(h.lon)]) : [];
 
     return (
-        <div className="px-2 pt-2 pb-4 landscape:p-2 landscape:pt-4 space-y-2 landscape:space-y-2">
+        <div className="px-2 pt-5 pb-4 landscape:p-2 landscape:pt-4 space-y-2 landscape:space-y-2">
 
-            {/* MODALE SSL */}
+            {/* --- MODALE SBLOCCO SSL (Ottimizzata per schermi bassi) --- */}
             {showSSLModal && (
-                <div className="fixed inset-0 z-[5000] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md text-center border-none">
-                    <div className="bg-[#1a1a1a] border border-white/10 p-8 rounded-[2.5rem] shadow-2xl max-w-sm w-full space-y-6">
-                        <div className="bg-red-500/20 w-16 h-16 rounded-full flex items-center justify-center mx-auto"><AlertTriangle size={32} className="text-red-500" /></div>
-                        <div className="space-y-2">
-                            <h2 className="text-xl font-black uppercase tracking-tight text-white font-mono">Sicurezza API</h2>
-                            <p className="text-gray-400 text-xs font-bold leading-relaxed px-4">Autorizza il certificato per ricevere i dati.</p>
+                <div className="fixed inset-0 z-[5000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
+                    <div className="bg-[#1a1a1a] border border-white/10 p-6 landscape:p-5 rounded-[2rem] shadow-2xl max-w-sm w-full space-y-4 landscape:space-y-3 my-auto">
+                        {/* Icona ridotta da 32 a 24 per risparmiare spazio */}
+                        <div className="bg-red-500/20 w-12 h-12 rounded-full flex items-center justify-center mx-auto shadow-lg">
+                            <AlertTriangle size={24} className="text-red-500" />
                         </div>
-                        <div className="space-y-3 pt-200">
-                            <button onClick={() => window.open(`${apiUrl}`, '_blank')} className="w-full bg-red-500 hover:bg-red-600 text-white font-black py-4 rounded-2xl shadow-lg active:scale-95 uppercase text-xs font-mono">1. Autorizza SSL</button>
-                            <button onClick={() => setShowSSLModal(false)} className="w-full bg-white/5 text-white font-black py-3 rounded-2xl border border-white/10 active:scale-95 uppercase text-xs font-mono">2. Ho fatto</button>
+                            {/* Testi più compatti */}
+                        <div className="space-y-1 text-center">
+                            <h2 className="text-lg font-black uppercase tracking-tight text-white font-mono leading-none">Sicurezza API</h2>
+                            <p className="text-gray-400 text-[11px] font-bold leading-tight px-2">
+                                Autorizza il certificato per ricevere i dati.
+                            </p>
+                        </div>
+
+                        {/* Gruppo pulsanti più vicini */}
+                        <div className="space-y-2 pt-1">
+                            <button onClick={() => window.open(`${apiUrl}`, '_blank')} className="w-full bg-red-500 hover:bg-red-600 text-white font-black py-3.5 rounded-2xl transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2 uppercase text-[11px] tracking-widest">
+                            <Navigation size={16} className="rotate-90" /> 1. Autorizza
+                            </button>
+                
+                            <p className="text-[9px] text-gray-600 font-black uppercase tracking-tighter text-center">
+                                Poi chiudi la scheda e torna qui
+                            </p>
+                
+                            <button onClick={() => setShowSSLModal(false)} className="w-full bg-white/5 hover:bg-white/10 text-white font-black py-3 rounded-2xl border border-white/10 active:scale-95 uppercase text-[11px] tracking-widest">
+                                    2. Ho fatto
+                            </button>
                         </div>
                     </div>
                 </div>

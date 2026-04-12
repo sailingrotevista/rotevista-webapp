@@ -47,7 +47,7 @@ function App() {
       
       {/* HEADER FISSO: Altezza ridotta in landscape per recuperare spazio */}
       <header
-        onDoubleClick={toggleFullscreen}
+        onClick={toggleFullscreen}
         className="fixed top-0 left-0 right-0 z-[1000] h-16 bg-[#121212]/80 backdrop-blur-lg border-b border-white/10 px-4 flex items-center justify-between cursor-pointer">
         <div className="flex items-center gap-3">
           {/* Logo e Titolo mantengono la stessa dimensione in ogni orientamento */}
