@@ -33,14 +33,6 @@ const AdvancedView = ({ manager }) => {
                         Gestione Sistemi di Bordo
                     </p>
                 </div>
-
-                {/* Spinner: appare in alto a destra durante l'invio dei comandi */}
-                {isUpdating && (
-                    <div className="bg-cyan-500/20 text-cyan-400 p-2.5 rounded-2xl flex items-center gap-2 border border-cyan-500/30 shadow-[0_0_15px_rgba(6,182,212,0.2)] animate-pulse">
-                        <Loader2 size={18} className="animate-spin" />
-                        <span className="text-[10px] font-black uppercase">Sync...</span>
-                    </div>
-                )}
             </header>
 
             {/* ============================================================

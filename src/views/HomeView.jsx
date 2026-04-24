@@ -8,6 +8,9 @@ import {
   AlertTriangle, ChevronRight
 } from 'lucide-react';
 
+// ============================================================
+// 1. CONFIGURAZIONE ICONA BARCA
+// ============================================================
 const boatIcon = new L.DivIcon({
     html: `<div style="font-size: 30px; filter: drop-shadow(0 0 5px black);">⛵</div>`,
     className: 'boat-marker',
@@ -15,21 +18,32 @@ const boatIcon = new L.DivIcon({
     iconAnchor: [15, 15]
 });
 
-const getFridgeColor = (t) => {
-    if (t === undefined || t === null) return 'text-white';
-    if (t < 1) return 'text-blue-400';
-    if (t <= 9) return 'text-white';
-    if (t <= 12) return 'text-orange-500';
-    return 'text-red-500';
+// ============================================================
+// 2. LOGICHE COLORE DINAMICO (REPLICA IOS)
+// ============================================================
+
+/** Scala Sicurezza Voltaggio AC Banchina */
+const getShoreVoltageColor = (v) => {
+    if (!v || v < 50) return 'text-gray-500';
+    if (v < 195 || v > 255) return 'text-red-500';    // Pericolo
+    if (v < 210 || v > 245) return 'text-orange-500'; // Attenzione
+    return 'text-gray-400';                            // OK
 };
 
-const getFreezerColor = (t) => {
+/** Scala cromatica universale per Pozzetti (Freezer/Frigo) */
+const getHybridTempColor = (t) => {
     if (t === undefined || t === null) return 'text-white';
-    if (t < -2) return 'text-white';
-    if (t <= 2) return 'text-orange-500';
-    return 'text-red-500';
+    if (t <= -12) return 'text-blue-600';     // Freezer OK
+    if (t < -4) return 'text-blue-400';       // Freezer al limite
+    if (t < 4) return 'text-orange-500';      // Zona critica (scongelamento/ghiaccio)
+    if (t <= 9) return 'text-white';          // Frigo OK
+    if (t <= 12) return 'text-orange-500';    // Frigo caldo
+    return 'text-red-500';                    // Allarme
 };
 
+// ============================================================
+// 3. PLUGIN LOGICA E CONTROLLI MAPPA
+// ============================================================
 const MapPlugins = ({ coords, trail, autoFollow, setAutoFollow }) => {
     const map = useMap();
     useMapEvents({
@@ -58,6 +72,9 @@ const MapPlugins = ({ coords, trail, autoFollow, setAutoFollow }) => {
     );
 };
 
+// ============================================================
+// 4. VISTA PRINCIPALE HOME
+// ============================================================
 const HomeView = ({ manager, onTabChange }) => {
     const { data, toggleSwitch, apiUrl, error, isUpdating } = manager;
     const [autoFollow, setAutoFollow] = useState(true);
@@ -76,71 +93,69 @@ const HomeView = ({ manager, onTabChange }) => {
     return (
         <div className="px-2 pt-5 pb-4 landscape:p-2 landscape:pt-4 space-y-2 landscape:space-y-2">
 
-            {/* --- MODALE SBLOCCO SSL (Ottimizzata per schermi bassi) --- */}
+            {/* --- MODALE SBLOCCO SSL --- */}
             {showSSLModal && (
                 <div className="fixed inset-0 z-[5000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
                     <div className="bg-[#1a1a1a] border border-white/10 p-6 landscape:p-5 rounded-[2rem] shadow-2xl max-w-sm w-full space-y-4 landscape:space-y-3 my-auto">
-                        {/* Icona ridotta da 32 a 24 per risparmiare spazio */}
-                        <div className="bg-red-500/20 w-12 h-12 rounded-full flex items-center justify-center mx-auto shadow-lg">
-                            <AlertTriangle size={24} className="text-red-500" />
+                        <div className="bg-red-500/20 w-12 h-12 rounded-full flex items-center justify-center mx-auto shadow-lg text-red-500">
+                            <AlertTriangle size={24} />
                         </div>
-                            {/* Testi più compatti */}
                         <div className="space-y-1 text-center">
                             <h2 className="text-lg font-black uppercase tracking-tight text-white font-mono leading-none">Sicurezza API</h2>
-                            <p className="text-gray-400 text-[11px] font-bold leading-tight px-2">
-                                Autorizza il certificato per ricevere i dati.
-                            </p>
+                            <p className="text-gray-400 text-[11px] font-bold px-2">Autorizza il certificato per ricevere i dati.</p>
                         </div>
-
-                        {/* Gruppo pulsanti più vicini */}
-                        <div className="space-y-2 pt-1">
-                            <button onClick={() => window.open(`${apiUrl}`, '_blank')} className="w-full bg-red-500 hover:bg-red-600 text-white font-black py-3.5 rounded-2xl transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2 uppercase text-[11px] tracking-widest">
-                            <Navigation size={16} className="rotate-90" /> 1. Autorizza
-                            </button>
-                
-                            <p className="text-[9px] text-gray-600 font-black uppercase tracking-tighter text-center">
-                                Poi chiudi la scheda e torna qui
-                            </p>
-                
-                            <button onClick={() => setShowSSLModal(false)} className="w-full bg-white/5 hover:bg-white/10 text-white font-black py-3 rounded-2xl border border-white/10 active:scale-95 uppercase text-[11px] tracking-widest">
-                                    2. Ho fatto
-                            </button>
+                        <div className="space-y-2 pt-2"> {/* Corretto pt-200 in pt-2 */}
+                            <button onClick={() => window.open(`${apiUrl}`, '_blank')} className="w-full bg-red-500 hover:bg-red-600 text-white font-black py-3.5 rounded-2xl transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2 uppercase text-[11px] tracking-widest font-mono">1. Autorizza SSL</button>
+                            <p className="text-[9px] text-gray-600 font-black uppercase tracking-tighter text-center">Poi torna qui</p>
+                            <button onClick={() => setShowSSLModal(false)} className="w-full bg-white/5 hover:bg-white/10 text-white font-black py-3 rounded-2xl border border-white/10 active:scale-95 uppercase text-[11px] tracking-widest font-mono">2. Ho fatto</button>
                         </div>
                     </div>
                 </div>
             )}
             
-            {/* SEZIONE 1: ENERGIA */}
+            {/* --- SEZIONE 1: ENERGIA (Batteria con Segno e Banchina Adattiva) --- */}
             <div className="grid grid-cols-2 gap-2 landscape:gap-2">
                 <div onClick={() => onTabChange(1)} className="cursor-pointer active:scale-95 transition-transform">
-                    <StatusBox title="BATTERIA" icon={<Battery className="text-green-500"/>} value={`${data?.power?.soc?.toFixed(1) || '-'}%`} sub={<>{data?.power?.dc_draw_w || 0}<span className="opacity-40 ml-0.5 font-bold uppercase">w</span></>} />
+                    <StatusBox
+                        title="BATTERIA"
+                        icon={<Battery className="text-green-500"/>}
+                        value={`${data?.power?.soc?.toFixed(1) || '-'}%`}
+                        sub={
+                            <span className={data?.power?.dc_draw_w > 0 ? "text-green-400" : "text-gray-300"}>
+                                {data?.power?.dc_draw_w > 0 ? `+${Math.round(data.power.dc_draw_w)}` : Math.round(data?.power?.dc_draw_w || 0)}
+                                <span className="opacity-40 ml-0.5 font-bold uppercase">w</span>
+                            </span>
+                        }
+                    />
                 </div>
                 <div onClick={() => onTabChange(3)} className="cursor-pointer active:scale-95 transition-transform">
                     <StatusBox
                         title="BANCHINA"
                         icon={<Power className={data?.power?.shore_power ? "text-green-500" : "text-red-500"}/>}
                         value={data?.power?.shore_power ? "ON" : "OFF"}
-                        sub={data?.power?.shore_power ? (
-                            <span className="flex flex-row landscape:flex-col items-center landscape:items-end">
+                        sub={
+                            <div className="flex flex-row landscape:flex-col items-center landscape:items-end">
                                 <span>{Math.round(data?.power?.ac_power_w || 0)}W</span>
-                                <span className="ml-1 landscape:ml-0 text-[11px] opacity-60 font-bold leading-none landscape:mt-1">({data?.power?.shore_v?.toFixed(0)}V)</span>
-                            </span>
-                        ) : (
-                            <>{Math.round(data?.power?.ac_power_w || 0)}<span className="opacity-40 ml-0.5 font-bold uppercase">w</span></>
-                        )}
+                                {data?.power?.shore_power && (
+                                    <span className={`${getShoreVoltageColor(data?.power?.shore_v)} ml-1 landscape:ml-0 text-[11px] landscape:text-[12px] font-bold leading-none landscape:mt-1`}>
+                                        ({data?.power?.shore_v?.toFixed(0)}V)
+                                    </span>
+                                )}
+                            </div>
+                        }
                     />
                 </div>
             </div>
 
-            {/* SEZIONE 2 & 3: TEMPERATURE E INTERRUTTORI */}
+            {/* --- SEZIONE 2 & 3: TEMPERATURE E INTERRUTTORI --- */}
             <div className="flex flex-col md:flex-row gap-2 landscape:gap-2 w-full">
                 <div className="w-full md:w-1/2 grid grid-cols-4 md:grid-cols-2 gap-2">
                     <div onClick={() => onTabChange(2)} className="cursor-pointer active:scale-95 transition-transform h-full">
                         <TempCard icon={<Thermometer size={18}/>} title="POZZ." val={data?.environment?.temp_pozzetto} color="text-yellow-500" />
                     </div>
                     <TempCard icon={<Sofa size={18}/>} title="QUADR." val={data?.environment?.temp_quadrato} color="text-orange-500" />
-                    <TempCard icon={<Snowflake size={18}/>} title="FRIGO" val={data?.environment?.temp_frigo} color="text-cyan-400" valueColor={getFridgeColor(data?.environment?.temp_frigo)} />
-                    <TempCard icon={<Snowflake size={18}/>} title="FREEZER" val={data?.environment?.temp_freezer} color="text-blue-500" valueColor={getFreezerColor(data?.environment?.temp_freezer)} />
+                    <TempCard icon={<Snowflake size={18}/>} title="FRIGO" val={data?.environment?.temp_frigo} color="text-cyan-400" valueColor={getHybridTempColor(data?.environment?.temp_frigo)} />
+                    <TempCard icon={<Snowflake size={18}/>} title="FREEZER" val={data?.environment?.temp_freezer} color="text-blue-500" valueColor={getHybridTempColor(data?.environment?.temp_freezer)} />
                 </div>
 
                 <div className={`w-full md:w-1/2 bg-white/5 rounded-[2rem] divide-y divide-white/5 border border-white/10 overflow-hidden shadow-xl transition-all duration-300 ${isUpdating ? 'opacity-60 grayscale-[0.5]' : 'opacity-100'}`}>
@@ -150,9 +165,9 @@ const HomeView = ({ manager, onTabChange }) => {
                 </div>
             </div>
 
-            {/* SEZIONE 4: MAPPA */}
+            {/* --- SEZIONE 4: MAPPA (CENTRATA AL 80%) --- */}
             <div className="space-y-2 pb-22 flex flex-col items-center">
-                <div className="flex justify-between items-center w-[80%] px-2">
+                <div className="flex justify-between items-center w-[80%] px-2 text-white">
                     <h3 className="text-[10px] font-black text-gray-500 tracking-widest uppercase font-mono opacity-50">Posizione GPS</h3>
                     <button onClick={() => window.open(`maps://?q=${lat},${lon}`, '_blank')} className="text-[9px] font-black bg-cyan-500/10 text-cyan-400 px-3 py-1 rounded-full border border-cyan-500/20 flex items-center gap-1 uppercase active:scale-95 transition-transform"><Navigation size={10} /> Apri in Mappe</button>
                 </div>
@@ -190,7 +205,7 @@ const TempCard = ({ icon, title, val, color, valueColor = "text-white" }) => (
 );
 
 const QuickActionRow = ({ icon, name, isOn, onToggle, disabled }) => (
-    <div className={`flex items-center justify-between p-5 landscape:p-4 bg-white/[0.02] text-white transition-all ${disabled ? 'pointer-events-none' : 'hover:bg-white/5'}`}>
+    <div className={`flex items-center justify-between p-5 landscape:p-4 bg-white/[0.02] text-white transition-all ${disabled ? 'pointer-events-none opacity-40' : 'hover:bg-white/5'}`}>
         <div className="flex items-center gap-3">
             {React.cloneElement(icon, { size: 20, className: isOn ? icon.props.className : 'text-gray-700 opacity-50' })}
             <span className="text-sm font-bold text-white tracking-tight uppercase">{name}</span>
