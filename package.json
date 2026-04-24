@@ -1,7 +1,7 @@
 {
   "name": "@sailingrotevista/rotevista-webapp",
   "private": false,
-  "version": "1.0.13",
+  "version": "1.0.14",
   "type": "module",
   "description": "Master Marine Dashboard for Rotevista - Monitoring Power, Solar, Environment and Navigation.",
   "author": "Alessio Tosi",
