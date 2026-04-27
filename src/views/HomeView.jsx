@@ -176,6 +176,7 @@ const HomeView = ({ manager, onTabChange }) => {
             )}
             
             {/* --- SEZIONE 1: ENERGIA (Con logica dinamica per Watt e Segni) --- */}
+            {/* --- SEZIONE 1: ENERGIA --- */}
             <div className="grid grid-cols-2 gap-2 landscape:gap-2">
                 {/* CARD BATTERIA */}
                 <div onClick={() => onTabChange(1)} className="cursor-pointer active:scale-95 transition-transform">
@@ -186,26 +187,26 @@ const HomeView = ({ manager, onTabChange }) => {
                         sub={
                             <span className={data?.power?.dc_draw_w >= 0 ? "text-green-400" : "text-gray-100"}>
                                 {data?.power?.dc_draw_w > 0 ? `+${Math.round(data.power.dc_draw_w)}` : Math.round(data?.power?.dc_draw_w || 0)}
-                                <span className="opacity-40 ml-0.5 font-bold uppercase">w</span>
+                                <span className="opacity-40 ml-0.5 font-black uppercase text-[12px]">w</span>
                             </span>
                         }
                     />
                 </div>
 
-                {/* CARD BANCHINA */}
+                {/* CARD BANCHINA / INVERTER (Sempre su due righe a destra) */}
                 <div onClick={() => onTabChange(3)} className="cursor-pointer active:scale-95 transition-transform">
                     <StatusBox
                         title="BANCHINA"
                         icon={<Power className={data?.power?.shore_power ? "text-green-500" : "text-red-500"}/>}
                         value={data?.power?.shore_power ? "ON" : "OFF"}
                         sub={
-                            <div className="flex flex-row landscape:flex-col items-center landscape:items-end">
+                            <div className="flex flex-col items-end leading-none">
                                 <span className={getShorePowerColor(data?.power?.ac_power_w, data?.switches?.shore_limit, data?.power?.shore_v, data?.power?.shore_power)}>
                                     {Math.round(data?.power?.ac_power_w || 0)}
-                                    <span className="opacity-40 ml-0.5 font-black uppercase">w</span>
+                                    <span className="opacity-40 ml-0.5 font-black uppercase text-[12px]">w</span>
                                 </span>
                                 {data?.power?.shore_power && data?.power?.shore_v > 50 && (
-                                    <span className={`${getShoreVoltageColor(data?.power?.shore_v)} ml-1 landscape:ml-0 text-[11px] landscape:text-[12px] font-bold leading-none landscape:mt-1`}>
+                                    <span className={`${getShoreVoltageColor(data?.power?.shore_v)} text-[12px] font-bold mt-1.5`}>
                                         ({data?.power?.shore_v?.toFixed(0)}V)
                                     </span>
                                 )}
