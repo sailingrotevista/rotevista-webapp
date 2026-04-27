@@ -30,6 +30,31 @@ const getShoreVoltageColor = (v) => {
     return 'text-gray-400';
 };
 
+/**
+ * getShorePowerColor: Verifica se stiamo assorbendo troppa corrente
+ * confrontando i Watt attuali con il limite impostato (Ampere * Volt)
+ */
+const getShorePowerColor = (w, limit, v) => {
+    if (!limit || limit === 0 || !v || v < 50) return 'text-gray-300';
+    
+    const absW = Math.abs(w);
+    const maxWatts = limit * v;
+    const usageRatio = absW / maxWatts;
+
+    // 1. ALLARME BLACKOUT (Oltre il 90% del limite impostato)
+    if (usageRatio > 0.9) return 'text-red-500 animate-pulse font-black';
+
+    // 2. ATTENZIONE LIMITE (Oltre il 70% del limite impostato)
+    if (usageRatio > 0.7) return 'text-orange-500 font-black';
+
+    // 3. SEGNALAZIONE CARICO PESANTE (Oltre 1000W assoluti - es. Boiler/Lavatrice)
+    // Usiamo il Giallo per indicare che un grande carico è attivo anche se siamo in sicurezza
+    if (absW > 1000) return 'text-yellow-400 font-black';
+
+    // 4. CARICO NORMALE
+    return 'text-gray-300';
+};
+
 /** Scala cromatica universale per Pozzetti (Freezer/Frigo) */
 const getHybridTempColor = (t) => {
     if (t === undefined || t === null) return 'text-white';
@@ -155,7 +180,9 @@ const HomeView = ({ manager, onTabChange }) => {
                         value={data?.power?.shore_power ? "ON" : "OFF"}
                         sub={
                             <div className="flex flex-row landscape:flex-col items-center landscape:items-end">
-                                <span>{Math.round(data?.power?.ac_power_w || 0)}W</span>
+                                <span className={getShorePowerColor(data?.power?.ac_power_w, data?.switches?.shore_limit, data?.power?.shore_v)}>
+                                    {Math.round(data?.power?.ac_power_w || 0)}W
+                                </span>
                                 {data?.power?.shore_power && (
                                     <span className={`${getShoreVoltageColor(data?.power?.shore_v)} ml-1 landscape:ml-0 text-[11px] landscape:text-[12px] font-bold leading-none landscape:mt-1`}>
                                         ({data?.power?.shore_v?.toFixed(0)}V)
