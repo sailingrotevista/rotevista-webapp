@@ -31,27 +31,33 @@ const getShoreVoltageColor = (v) => {
 };
 
 /**
- * getShorePowerColor: Verifica se stiamo assorbendo troppa corrente
- * confrontando i Watt attuali con il limite impostato (Ampere * Volt)
+ * getShorePowerColor: Verifica il carico AC
+ * - Se isShoreOn è true: Limite = Ampere * Volt
+ * - Se isShoreOn è false: Limite = 1200W (Inverter)
  */
-const getShorePowerColor = (w, limit, v) => {
-    if (!limit || limit === 0 || !v || v < 50) return 'text-gray-300';
-    
+const getShorePowerColor = (w, limitAmps, v, isShoreOn) => {
     const absW = Math.abs(w);
-    const maxWatts = limit * v;
-    const usageRatio = absW / maxWatts;
+    
+    // Rileviamo se la banchina è VERA e STABILE (> 180V)
+    const isGridStable = isShoreOn && v > 180;
 
-    // 1. ALLARME BLACKOUT (Oltre il 90% del limite impostato)
+    // Se la banchina è stabile usa il suo limite, altrimenti usa i 1200W del Multiplus
+    const effectiveLimit = isGridStable ? (limitAmps * v) : 1200;
+
+    // Sicurezza: se per qualche motivo il limite è 0, mettiamo 1200 per evitare errori
+    const safeLimit = effectiveLimit > 100 ? effectiveLimit : 1200;
+    
+    const usageRatio = absW / safeLimit;
+
+    // 1. ALLARME ROSSO (>90%)
     if (usageRatio > 0.9) return 'text-red-500 animate-pulse font-black';
 
-    // 2. ATTENZIONE LIMITE (Oltre il 70% del limite impostato)
+    // 2. ATTENZIONE ARANCIONE (>70%)
     if (usageRatio > 0.7) return 'text-orange-500 font-black';
 
-    // 3. SEGNALAZIONE CARICO PESANTE (Oltre 1000W assoluti - es. Boiler/Lavatrice)
-    // Usiamo il Giallo per indicare che un grande carico è attivo anche se siamo in sicurezza
-    if (absW > 1000) return 'text-yellow-400 font-black';
+    // 3. CARICO PESANTE (Solo se banchina è attiva e stabile, oltre 1000W)
+    if (isGridStable && absW > 1000) return 'text-yellow-400 font-black';
 
-    // 4. CARICO NORMALE
     return 'text-gray-300';
 };
 
@@ -180,18 +186,18 @@ const HomeView = ({ manager, onTabChange }) => {
                         value={data?.power?.shore_power ? "ON" : "OFF"}
                         sub={
                             <div className="flex flex-row landscape:flex-col items-center landscape:items-end">
-                                <span className={getShorePowerColor(data?.power?.ac_power_w, data?.switches?.shore_limit, data?.power?.shore_v)}>
+                                <span className={getShorePowerColor(data?.power?.ac_power_w, data?.switches?.shore_limit, data?.power?.shore_v, data?.power?.shore_power)}>
                                     {Math.round(data?.power?.ac_power_w || 0)}W
                                 </span>
-                                {data?.power?.shore_power && (
+                                {data?.power?.shore_power && data?.power?.shore_v > 50 && (
                                     <span className={`${getShoreVoltageColor(data?.power?.shore_v)} ml-1 landscape:ml-0 text-[11px] landscape:text-[12px] font-bold leading-none landscape:mt-1`}>
                                         ({data?.power?.shore_v?.toFixed(0)}V)
                                     </span>
                                 )}
                             </div>
-                        }
-                    />
-                </div>
+        }
+    />
+</div>
             </div>
 
             {/* --- SEZIONE 2 & 3: TEMPERATURE E INTERRUTTORI --- */}
@@ -205,7 +211,7 @@ const HomeView = ({ manager, onTabChange }) => {
                     <TempCard icon={<Snowflake size={18}/>} title="FREEZER" val={data?.environment?.temp_freezer} color="text-blue-500" valueColor={getHybridTempColor(data?.environment?.temp_freezer)} />
                 </div>
 
-                <div className={`w-full md:w-1/2 bg-white/5 rounded-[2rem] divide-y divide-white/5 border border-white/10 overflow-hidden shadow-xl transition-all duration-300 ${isUpdating ? 'opacity-60 grayscale-[0.5]' : 'opacity-100'}`}>
+                <div className={`w-full md:w-1/2 bg-white/5 rounded-[2rem] flex flex-col divide-y divide-white/5 border border-white/10 overflow-hidden shadow-xl transition-all duration-300 ${isUpdating ? 'opacity-60 grayscale-[0.5]' : 'opacity-100'}`}>
                     <QuickActionRow icon={<Droplet className="text-blue-400"/>} name="Pompa Acqua" isOn={data?.switches?.pump_on} onToggle={(v) => toggleSwitch('pump', v)} disabled={isUpdating} />
                     <QuickActionRow icon={<Flame className="text-orange-400"/>} name="Boiler" isOn={data?.switches?.boiler_on} onToggle={(v) => toggleSwitch('boiler', v)} disabled={isUpdating} />
                     <QuickActionRow icon={<Shirt className="text-purple-400"/>} name="Lavatrice" isOn={data?.switches?.washing_machine_on} onToggle={(v) => toggleSwitch('washer', v)} disabled={isUpdating} />
@@ -252,7 +258,8 @@ const TempCard = ({ icon, title, val, color, valueColor = "text-white" }) => (
 );
 
 const QuickActionRow = ({ icon, name, isOn, onToggle, disabled }) => (
-    <div className={`flex items-center justify-between p-5 landscape:p-4 bg-white/[0.02] text-white transition-all ${disabled ? 'pointer-events-none opacity-40' : 'hover:bg-white/5'}`}>
+    <div className={`flex flex-1 items-center justify-between p-5 landscape:p-4 bg-white/[0.02] text-white transition-all ${disabled ? 'pointer-events-none opacity-40' : 'hover:bg-white/5'}`}>
+        {/* ... resto del codice invariato ... */}
         <div className="flex items-center gap-3">
             {React.cloneElement(icon, { size: 20, className: isOn ? icon.props.className : 'text-gray-700 opacity-50' })}
             <span className="text-sm font-bold text-white tracking-tight uppercase">{name}</span>
