@@ -1,5 +1,5 @@
 /* --- File: src/views/HomeView.jsx --- */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import {
@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 
 // ============================================================
-// 1. CONFIGURAZIONE ICONA BARCA
+// 1. CONFIGURAZIONE ICONA BARCA (SVG/EMOJI)
 // ============================================================
 const boatIcon = new L.DivIcon({
     html: `<div style="font-size: 30px; filter: drop-shadow(0 0 5px black);">⛵</div>`,
@@ -19,7 +19,7 @@ const boatIcon = new L.DivIcon({
 });
 
 // ============================================================
-// 2. LOGICHE COLORE DINAMICO (REPLICA IOS)
+// 2. LOGICHE COLORE DINAMICO
 // ============================================================
 
 /** Scala Sicurezza Voltaggio AC Banchina */
@@ -37,39 +37,25 @@ const getShoreVoltageColor = (v) => {
  */
 const getShorePowerColor = (w, limitAmps, v, isShoreOn) => {
     const absW = Math.abs(w);
-    
-    // Rileviamo se la banchina è VERA e STABILE (> 180V)
     const isGridStable = isShoreOn && v > 180;
+    const safeLimit = isGridStable ? (limitAmps * v) : 1200;
+    const usageRatio = absW / (safeLimit > 100 ? safeLimit : 1200);
 
-    // Se la banchina è stabile usa il suo limite, altrimenti usa i 1200W del Multiplus
-    const effectiveLimit = isGridStable ? (limitAmps * v) : 1200;
-
-    // Sicurezza: se per qualche motivo il limite è 0, mettiamo 1200 per evitare errori
-    const safeLimit = effectiveLimit > 100 ? effectiveLimit : 1200;
-    
-    const usageRatio = absW / safeLimit;
-
-    // 1. ALLARME ROSSO (>90%)
     if (usageRatio > 0.9) return 'text-red-500 animate-pulse font-black';
-
-    // 2. ATTENZIONE ARANCIONE (>70%)
     if (usageRatio > 0.7) return 'text-orange-500 font-black';
-
-    // 3. CARICO PESANTE (Solo se banchina è attiva e stabile, oltre 1000W)
     if (isGridStable && absW > 1000) return 'text-yellow-400 font-black';
-
-    return 'text-gray-300';
+    return 'text-gray-100'; // Bianco di base se tutto OK
 };
 
 /** Scala cromatica universale per Pozzetti (Freezer/Frigo) */
 const getHybridTempColor = (t) => {
     if (t === undefined || t === null) return 'text-white';
-    if (t <= -12) return 'text-blue-600';
-    if (t < -4) return 'text-blue-400';
-    if (t < 4) return 'text-orange-500';
-    if (t <= 9) return 'text-white';
-    if (t <= 12) return 'text-orange-500';
-    return 'text-red-500';
+    if (t <= -12) return 'text-blue-600';     // Freezer OK
+    if (t < -4) return 'text-blue-400';       // Freezer al limite
+    if (t < 4) return 'text-orange-500';      // Zona critica (scongelamento/ghiaccio)
+    if (t <= 9) return 'text-white';          // Frigo OK
+    if (t <= 12) return 'text-orange-500';    // Frigo caldo
+    return 'text-red-500';                    // Allarme
 };
 
 // ============================================================
@@ -78,6 +64,7 @@ const getHybridTempColor = (t) => {
 const MapPlugins = ({ coords, trail, autoFollow, setAutoFollow }) => {
     const map = useMap();
 
+    // Disattiva l'auto-follow se l'utente interagisce con la mappa
     useMapEvents({
         dragstart: () => setAutoFollow(false),
         zoomstart: () => setAutoFollow(false),
@@ -86,7 +73,6 @@ const MapPlugins = ({ coords, trail, autoFollow, setAutoFollow }) => {
 
     useEffect(() => {
         if (autoFollow && coords[0] !== 0) {
-            // Forza il ricalcolo delle dimensioni prima di centrare (per h-108)
             map.invalidateSize();
             map.setView(coords, map.getZoom(), { animate: true, duration: 1 });
         }
@@ -99,12 +85,13 @@ const MapPlugins = ({ coords, trail, autoFollow, setAutoFollow }) => {
 
     return (
         <>
-            {trail.length > 0 && <Polyline positions={trail} color="#22d3ee" weight={5} opacity={0.8} lineCap="round" />}
+            {/* TRACCIATO GPS REALE AMMORBIDITO */}
+            {trail.length > 0 && <Polyline positions={trail} color="#22d3ee" weight={5} opacity={0.8} lineCap="round" lineJoin="round" />}
             
+            {/* CONTROLLI IN SOVRAPPOSIZIONE SULLA MAPPA */}
             <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-4 z-[1000]">
                 <button onClick={(e) => { e.stopPropagation(); setAutoFollow(false); map.zoomIn(); }} className="w-12 h-12 rounded-2xl bg-black/40 backdrop-blur-md border border-white/10 flex items-center justify-center text-white shadow-lg active:scale-90 transition-all"><Plus size={24} /></button>
                 <button onClick={(e) => { e.stopPropagation(); setAutoFollow(false); map.zoomOut(); }} className="w-12 h-12 rounded-2xl bg-black/40 backdrop-blur-md border border-white/10 flex items-center justify-center text-white shadow-lg active:scale-90 transition-all"><Minus size={24} /></button>
-                
                 <button
                     onClick={(e) => {
                         e.stopPropagation();
@@ -139,12 +126,36 @@ const HomeView = ({ manager, onTabChange }) => {
     const lat = parseFloat(data?.gps?.lat) || 36.78;
     const lon = parseFloat(data?.gps?.lon) || 14.54;
     const coords = [lat, lon];
-    const trail = data?.environment?.gps_history ? data.environment.gps_history.map(h => [parseFloat(h.lat), parseFloat(h.lon)]) : [];
+
+    // --- ALGORITMO DI SMOOTHING CATMULL-ROM PER LA TRACCIA GPS ---
+    const smoothedTrail = useMemo(() => {
+        const rawHistory = data?.environment?.gps_history || [];
+        if (rawHistory.length < 4) return rawHistory.map(h => [parseFloat(h.lat), parseFloat(h.lon)]);
+
+        const points = rawHistory.map(h => ({ x: parseFloat(h.lat), y: parseFloat(h.lon) }));
+        let smoothPoints = [];
+
+        for (let i = 0; i < points.length - 1; i++) {
+            const p0 = points[i === 0 ? i : i - 1];
+            const p1 = points[i];
+            const p2 = points[i + 1];
+            const p3 = points[i + 1 === points.length - 1 ? i + 1 : i + 2];
+
+            // Generiamo 4 punti intermedi per ogni segmento
+            for (let t = 0; t < 1; t += 0.25) {
+                const x = 0.5 * ((2 * p1.x) + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t * t + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t * t * t);
+                const y = 0.5 * ((2 * p1.y) + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t * t + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t * t * t);
+                smoothPoints.push([x, y]);
+            }
+        }
+        smoothPoints.push([points[points.length - 1].x, points[points.length - 1].y]);
+        return smoothPoints;
+    }, [data?.environment?.gps_history]);
 
     return (
         <div className="px-2 pt-5 pb-4 landscape:p-2 landscape:pt-4 space-y-2 landscape:space-y-2">
 
-            {/* --- MODALE SBLOCCO SSL --- */}
+            {/* --- MODALE SBLOCCO SSL (Ottimizzata per schermi bassi) --- */}
             {showSSLModal && (
                 <div className="fixed inset-0 z-[5000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
                     <div className="bg-[#1a1a1a] border border-white/10 p-6 landscape:p-5 rounded-[2rem] shadow-2xl max-w-sm w-full space-y-4 landscape:space-y-3 my-auto">
@@ -164,21 +175,24 @@ const HomeView = ({ manager, onTabChange }) => {
                 </div>
             )}
             
-            {/* --- SEZIONE 1: ENERGIA --- */}
+            {/* --- SEZIONE 1: ENERGIA (Con logica dinamica per Watt e Segni) --- */}
             <div className="grid grid-cols-2 gap-2 landscape:gap-2">
+                {/* CARD BATTERIA */}
                 <div onClick={() => onTabChange(1)} className="cursor-pointer active:scale-95 transition-transform">
                     <StatusBox
                         title="BATTERIA"
                         icon={<Battery className="text-green-500"/>}
                         value={`${data?.power?.soc?.toFixed(1) || '-'}%`}
                         sub={
-                            <span className={data?.power?.dc_draw_w > 0 ? "text-green-400" : "text-gray-300"}>
+                            <span className={data?.power?.dc_draw_w >= 0 ? "text-green-400" : "text-gray-100"}>
                                 {data?.power?.dc_draw_w > 0 ? `+${Math.round(data.power.dc_draw_w)}` : Math.round(data?.power?.dc_draw_w || 0)}
-                                <span className="opacity-40 ml-0.5 font-bold uppercase text-gray-400">w</span>
+                                <span className="opacity-40 ml-0.5 font-bold uppercase">w</span>
                             </span>
                         }
                     />
                 </div>
+
+                {/* CARD BANCHINA */}
                 <div onClick={() => onTabChange(3)} className="cursor-pointer active:scale-95 transition-transform">
                     <StatusBox
                         title="BANCHINA"
@@ -187,7 +201,8 @@ const HomeView = ({ manager, onTabChange }) => {
                         sub={
                             <div className="flex flex-row landscape:flex-col items-center landscape:items-end">
                                 <span className={getShorePowerColor(data?.power?.ac_power_w, data?.switches?.shore_limit, data?.power?.shore_v, data?.power?.shore_power)}>
-                                    {Math.round(data?.power?.ac_power_w || 0)}W
+                                    {Math.round(data?.power?.ac_power_w || 0)}
+                                    <span className="opacity-40 ml-0.5 font-black uppercase">w</span>
                                 </span>
                                 {data?.power?.shore_power && data?.power?.shore_v > 50 && (
                                     <span className={`${getShoreVoltageColor(data?.power?.shore_v)} ml-1 landscape:ml-0 text-[11px] landscape:text-[12px] font-bold leading-none landscape:mt-1`}>
@@ -195,13 +210,14 @@ const HomeView = ({ manager, onTabChange }) => {
                                     </span>
                                 )}
                             </div>
-        }
-    />
-</div>
+                        }
+                    />
+                </div>
             </div>
 
             {/* --- SEZIONE 2 & 3: TEMPERATURE E INTERRUTTORI --- */}
             <div className="flex flex-col md:flex-row gap-2 landscape:gap-2 w-full">
+                {/* Temperature (4 colonne o 2x2 in landscape) */}
                 <div className="w-full md:w-1/2 grid grid-cols-4 md:grid-cols-2 gap-2">
                     <div onClick={() => onTabChange(2)} className="cursor-pointer active:scale-95 transition-transform h-full">
                         <TempCard icon={<Thermometer size={18}/>} title="POZZ." val={data?.environment?.temp_pozzetto} color="text-yellow-500" />
@@ -211,6 +227,7 @@ const HomeView = ({ manager, onTabChange }) => {
                     <TempCard icon={<Snowflake size={18}/>} title="FREEZER" val={data?.environment?.temp_freezer} color="text-blue-500" valueColor={getHybridTempColor(data?.environment?.temp_freezer)} />
                 </div>
 
+                {/* Interruttori Shelly (Inibiti durante il sync) */}
                 <div className={`w-full md:w-1/2 bg-white/5 rounded-[2rem] flex flex-col divide-y divide-white/5 border border-white/10 overflow-hidden shadow-xl transition-all duration-300 ${isUpdating ? 'opacity-60 grayscale-[0.5]' : 'opacity-100'}`}>
                     <QuickActionRow icon={<Droplet className="text-blue-400"/>} name="Pompa Acqua" isOn={data?.switches?.pump_on} onToggle={(v) => toggleSwitch('pump', v)} disabled={isUpdating} />
                     <QuickActionRow icon={<Flame className="text-orange-400"/>} name="Boiler" isOn={data?.switches?.boiler_on} onToggle={(v) => toggleSwitch('boiler', v)} disabled={isUpdating} />
@@ -218,16 +235,16 @@ const HomeView = ({ manager, onTabChange }) => {
                 </div>
             </div>
 
-            {/* --- SEZIONE 4: MAPPA SATELLITARE (CENTRATURA OTTIMIZZATA) --- */}
+            {/* --- SEZIONE 4: MAPPA SATELLITARE (Centrata all'80%, h-80 in landscape) --- */}
             <div className="space-y-2 pb-22 flex flex-col items-center">
                 <div className="flex justify-between items-center w-[80%] px-2 text-white">
                     <h3 className="text-[10px] font-black text-gray-500 tracking-widest uppercase font-mono opacity-50">Posizione GPS</h3>
                     <button onClick={() => window.open(`maps://?q=${lat},${lon}`, '_blank')} className="text-[9px] font-black bg-cyan-500/10 text-cyan-400 px-3 py-1 rounded-full border border-cyan-500/20 flex items-center gap-1 uppercase active:scale-95 transition-transform"><Navigation size={10} /> Apri in Mappe</button>
                 </div>
-                <div onPointerDown={(e) => e.stopPropagation()} onPointerMove={(e) => e.stopPropagation()} className="h-64 landscape:h-108 w-[80%] rounded-[2.5rem] overflow-hidden border border-white/10 shadow-2xl relative isolate touch-none">
-                    <MapContainer center={coords} zoom={17} maxZoom={20} style={{ height: '100%', width: '100%' }} zoomControl={false} attributionControl={false}>
+                <div onPointerDown={(e) => e.stopPropagation()} onPointerMove={(e) => e.stopPropagation()} className="h-64 landscape:h-80 w-[80%] rounded-[2.5rem] overflow-hidden border border-white/10 shadow-2xl relative isolate touch-none">
+                    <MapContainer center={coords} zoom={18} maxZoom={21} style={{ height: '100%', width: '100%' }} zoomControl={false} attributionControl={false}>
                         <TileLayer url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" maxZoom={20} maxNativeZoom={19} />
-                        <MapPlugins coords={coords} trail={trail} autoFollow={autoFollow} setAutoFollow={setAutoFollow} />
+                        <MapPlugins coords={coords} trail={smoothedTrail} autoFollow={autoFollow} setAutoFollow={setAutoFollow} />
                         <Marker position={coords} icon={boatIcon} />
                     </MapContainer>
                 </div>
@@ -239,18 +256,19 @@ const HomeView = ({ manager, onTabChange }) => {
 // ============================================================
 // 5. COMPONENTI UI RIUTILIZZABILI
 // ============================================================
+
 const StatusBox = ({ icon, title, value, sub }) => (
-    <div className="bg-white/5 p-5 landscape:p-4 rounded-[2rem] border border-white/10 flex flex-col landscape:flex-row landscape:items-center landscape:justify-between shadow-lg text-white group hover:bg-white/10 transition-colors h-full">
+    <div className="bg-white/5 p-5 rounded-[2rem] border border-white/10 flex flex-row items-center justify-between shadow-lg text-white group hover:bg-white/10 transition-colors h-full">
         <div className="flex flex-col">
             <div className="flex items-center gap-1 text-gray-500 text-[9px] font-black tracking-widest uppercase whitespace-nowrap">{icon} {title}</div>
-            <div className="text-3xl landscape:text-2xl font-black mt-1 tracking-tighter">{value}</div>
+            <div className="text-3xl font-black mt-1 tracking-tighter">{value}</div>
         </div>
-        <div className="text-[14px] text-gray-400 font-black uppercase tracking-tight mt-1 landscape:mt-0 landscape:text-right landscape:pl-2">{sub}</div>
+        <div className="text-[18px] text-gray-200 font-black uppercase tracking-tight text-right pl-2 leading-tight">{sub}</div>
     </div>
 );
 
 const TempCard = ({ icon, title, val, color, valueColor = "text-white" }) => (
-    <div className="bg-white/5 py-4 landscape:py-3 rounded-3xl border border-white/5 flex flex-col items-center gap-1 text-center shadow-md hover:bg-white/10 transition-colors h-full justify-center">
+    <div className="bg-white/5 py-4 landscape:py-3 rounded-3xl border border-white/5 flex flex-col items-center gap-1 text-center shadow-md hover:bg-white/10 transition-colors h-full justify-center text-white">
         <div className={color}>{icon}</div>
         <div className="text-[8px] font-black text-gray-600 uppercase tracking-tighter mt-1">{title}</div>
         <div className={`text-lg font-black ${valueColor}`}>{val?.toFixed(1) || '-'}°</div>
@@ -259,7 +277,6 @@ const TempCard = ({ icon, title, val, color, valueColor = "text-white" }) => (
 
 const QuickActionRow = ({ icon, name, isOn, onToggle, disabled }) => (
     <div className={`flex flex-1 items-center justify-between p-5 landscape:p-4 bg-white/[0.02] text-white transition-all ${disabled ? 'pointer-events-none opacity-40' : 'hover:bg-white/5'}`}>
-        {/* ... resto del codice invariato ... */}
         <div className="flex items-center gap-3">
             {React.cloneElement(icon, { size: 20, className: isOn ? icon.props.className : 'text-gray-700 opacity-50' })}
             <span className="text-sm font-bold text-white tracking-tight uppercase">{name}</span>
