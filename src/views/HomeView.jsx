@@ -25,20 +25,20 @@ const boatIcon = new L.DivIcon({
 /** Scala Sicurezza Voltaggio AC Banchina */
 const getShoreVoltageColor = (v) => {
     if (!v || v < 50) return 'text-gray-500';
-    if (v < 195 || v > 255) return 'text-red-500';    // Pericolo
-    if (v < 210 || v > 245) return 'text-orange-500'; // Attenzione
-    return 'text-gray-400';                            // OK
+    if (v < 195 || v > 255) return 'text-red-500';
+    if (v < 210 || v > 245) return 'text-orange-500';
+    return 'text-gray-400';
 };
 
 /** Scala cromatica universale per Pozzetti (Freezer/Frigo) */
 const getHybridTempColor = (t) => {
     if (t === undefined || t === null) return 'text-white';
-    if (t <= -12) return 'text-blue-600';     // Freezer OK
-    if (t < -4) return 'text-blue-400';       // Freezer al limite
-    if (t < 4) return 'text-orange-500';      // Zona critica (scongelamento/ghiaccio)
-    if (t <= 9) return 'text-white';          // Frigo OK
-    if (t <= 12) return 'text-orange-500';    // Frigo caldo
-    return 'text-red-500';                    // Allarme
+    if (t <= -12) return 'text-blue-600';
+    if (t < -4) return 'text-blue-400';
+    if (t < 4) return 'text-orange-500';
+    if (t <= 9) return 'text-white';
+    if (t <= 12) return 'text-orange-500';
+    return 'text-red-500';
 };
 
 // ============================================================
@@ -46,27 +46,47 @@ const getHybridTempColor = (t) => {
 // ============================================================
 const MapPlugins = ({ coords, trail, autoFollow, setAutoFollow }) => {
     const map = useMap();
+
     useMapEvents({
         dragstart: () => setAutoFollow(false),
         zoomstart: () => setAutoFollow(false),
         touchstart: () => setAutoFollow(false),
     });
+
     useEffect(() => {
         if (autoFollow && coords[0] !== 0) {
+            // Forza il ricalcolo delle dimensioni prima di centrare (per h-108)
+            map.invalidateSize();
             map.setView(coords, map.getZoom(), { animate: true, duration: 1 });
         }
     }, [coords, autoFollow, map]);
+
     useEffect(() => {
         const timer = setTimeout(() => { map.invalidateSize(); }, 400);
         return () => clearTimeout(timer);
     }, [map]);
+
     return (
         <>
             {trail.length > 0 && <Polyline positions={trail} color="#22d3ee" weight={5} opacity={0.8} lineCap="round" />}
+            
             <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-4 z-[1000]">
                 <button onClick={(e) => { e.stopPropagation(); setAutoFollow(false); map.zoomIn(); }} className="w-12 h-12 rounded-2xl bg-black/40 backdrop-blur-md border border-white/10 flex items-center justify-center text-white shadow-lg active:scale-90 transition-all"><Plus size={24} /></button>
                 <button onClick={(e) => { e.stopPropagation(); setAutoFollow(false); map.zoomOut(); }} className="w-12 h-12 rounded-2xl bg-black/40 backdrop-blur-md border border-white/10 flex items-center justify-center text-white shadow-lg active:scale-90 transition-all"><Minus size={24} /></button>
-                <button onClick={(e) => { e.stopPropagation(); setAutoFollow(true); map.setView(coords, 18, { animate: true }); }} className={`w-12 h-12 rounded-2xl backdrop-blur-md border transition-all flex items-center justify-center shadow-lg ${autoFollow ? 'bg-cyan-500/30 border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.4)]' : 'bg-black/40 border-white/10'}`}><Target size={24} className={autoFollow ? "text-cyan-400" : "text-white"} /></button>
+                
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        map.invalidateSize();
+                        setAutoFollow(true);
+                        map.setView(coords, 18, { animate: true });
+                    }}
+                    className={`w-12 h-12 rounded-2xl backdrop-blur-md border transition-all flex items-center justify-center shadow-lg active:scale-90 ${
+                        autoFollow ? 'bg-cyan-500/30 border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.4)]' : 'bg-black/40 border-white/10'
+                    }`}
+                >
+                    <Target size={24} className={autoFollow ? "text-cyan-400" : "text-white"} />
+                </button>
             </div>
         </>
     );
@@ -104,16 +124,16 @@ const HomeView = ({ manager, onTabChange }) => {
                             <h2 className="text-lg font-black uppercase tracking-tight text-white font-mono leading-none">Sicurezza API</h2>
                             <p className="text-gray-400 text-[11px] font-bold px-2">Autorizza il certificato per ricevere i dati.</p>
                         </div>
-                        <div className="space-y-2 pt-2"> {/* Corretto pt-200 in pt-2 */}
+                        <div className="space-y-2 pt-2">
                             <button onClick={() => window.open(`${apiUrl}`, '_blank')} className="w-full bg-red-500 hover:bg-red-600 text-white font-black py-3.5 rounded-2xl transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2 uppercase text-[11px] tracking-widest font-mono">1. Autorizza SSL</button>
-                            <p className="text-[9px] text-gray-600 font-black uppercase tracking-tighter text-center">Poi torna qui</p>
+                            <p className="text-[9px] text-gray-600 font-black uppercase tracking-tighter text-center">Poi chiudi la scheda e torna qui</p>
                             <button onClick={() => setShowSSLModal(false)} className="w-full bg-white/5 hover:bg-white/10 text-white font-black py-3 rounded-2xl border border-white/10 active:scale-95 uppercase text-[11px] tracking-widest font-mono">2. Ho fatto</button>
                         </div>
                     </div>
                 </div>
             )}
             
-            {/* --- SEZIONE 1: ENERGIA (Batteria con Segno e Banchina Adattiva) --- */}
+            {/* --- SEZIONE 1: ENERGIA --- */}
             <div className="grid grid-cols-2 gap-2 landscape:gap-2">
                 <div onClick={() => onTabChange(1)} className="cursor-pointer active:scale-95 transition-transform">
                     <StatusBox
@@ -123,7 +143,7 @@ const HomeView = ({ manager, onTabChange }) => {
                         sub={
                             <span className={data?.power?.dc_draw_w > 0 ? "text-green-400" : "text-gray-300"}>
                                 {data?.power?.dc_draw_w > 0 ? `+${Math.round(data.power.dc_draw_w)}` : Math.round(data?.power?.dc_draw_w || 0)}
-                                <span className="opacity-40 ml-0.5 font-bold uppercase">w</span>
+                                <span className="opacity-40 ml-0.5 font-bold uppercase text-gray-400">w</span>
                             </span>
                         }
                     />
@@ -165,13 +185,13 @@ const HomeView = ({ manager, onTabChange }) => {
                 </div>
             </div>
 
-            {/* --- SEZIONE 4: MAPPA (CENTRATA AL 80%) --- */}
+            {/* --- SEZIONE 4: MAPPA SATELLITARE (CENTRATURA OTTIMIZZATA) --- */}
             <div className="space-y-2 pb-22 flex flex-col items-center">
                 <div className="flex justify-between items-center w-[80%] px-2 text-white">
                     <h3 className="text-[10px] font-black text-gray-500 tracking-widest uppercase font-mono opacity-50">Posizione GPS</h3>
                     <button onClick={() => window.open(`maps://?q=${lat},${lon}`, '_blank')} className="text-[9px] font-black bg-cyan-500/10 text-cyan-400 px-3 py-1 rounded-full border border-cyan-500/20 flex items-center gap-1 uppercase active:scale-95 transition-transform"><Navigation size={10} /> Apri in Mappe</button>
                 </div>
-                <div onPointerDown={(e) => e.stopPropagation()} onPointerMove={(e) => e.stopPropagation()} className="h-64 landscape:h-52 w-[80%] rounded-[2.5rem] overflow-hidden border border-white/10 shadow-2xl relative isolate touch-none">
+                <div onPointerDown={(e) => e.stopPropagation()} onPointerMove={(e) => e.stopPropagation()} className="h-64 landscape:h-108 w-[80%] rounded-[2.5rem] overflow-hidden border border-white/10 shadow-2xl relative isolate touch-none">
                     <MapContainer center={coords} zoom={17} maxZoom={20} style={{ height: '100%', width: '100%' }} zoomControl={false} attributionControl={false}>
                         <TileLayer url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" maxZoom={20} maxNativeZoom={19} />
                         <MapPlugins coords={coords} trail={trail} autoFollow={autoFollow} setAutoFollow={setAutoFollow} />
