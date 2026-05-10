@@ -12,7 +12,7 @@ import {
 // 1. CONFIGURAZIONE ICONA BARCA (SVG/EMOJI)
 // ============================================================
 const boatIcon = new L.DivIcon({
-    html: `<div style="font-size: 30px; filter: drop-shadow(0 0 5px black);">⛵</div>`,
+    html: `<div style="font-size: 20px; opacity: 0.5; filter: drop-shadow(0 0 5px black);">⛵</div>`,
     className: 'boat-marker',
     iconSize: [30, 30],
     iconAnchor: [15, 15]
@@ -59,51 +59,65 @@ const getHybridTempColor = (t) => {
 };
 
 // ============================================================
-// 3. PLUGIN LOGICA E CONTROLLI MAPPA
+// 3. PLUGIN LOGICA E CONTROLLI MAPPA (Versione Evoluta)
 // ============================================================
 const MapPlugins = ({ coords, trail, autoFollow, setAutoFollow }) => {
     const map = useMap();
 
-    // Disattiva l'auto-follow se l'utente interagisce con la mappa
+    // Gestione zoom limite: se arriviamo a 18/19 e non ci sono tile,
+    // forziamo comunque il setView sulla posizione
+    const handleZoom = (type) => {
+        setAutoFollow(false);
+        const currentZoom = map.getZoom();
+        const nextZoom = type === 'in' ? currentZoom + 1 : currentZoom - 1;
+        // Se zoomiamo oltre il massimo supportato dalle tile,
+        // lasciamo che Leaflet gestisca lo zoom "digitale" (pixelato) senza bloccarlo
+        map.setZoom(nextZoom);
+    };
+
     useMapEvents({
         dragstart: () => setAutoFollow(false),
         zoomstart: () => setAutoFollow(false),
-        touchstart: () => setAutoFollow(false),
     });
 
     useEffect(() => {
         if (autoFollow && coords[0] !== 0) {
-            map.invalidateSize();
-            map.setView(coords, map.getZoom(), { animate: true, duration: 1 });
+            map.setView(coords, map.getZoom(), { animate: true, duration: 0.5 });
         }
     }, [coords, autoFollow, map]);
 
-    useEffect(() => {
-        const timer = setTimeout(() => { map.invalidateSize(); }, 400);
-        return () => clearTimeout(timer);
-    }, [map]);
-
     return (
         <>
-            {/* TRACCIATO GPS REALE AMMORBIDITO */}
-            {trail.length > 0 && <Polyline positions={trail} color="#22d3ee" weight={5} opacity={0.8} lineCap="round" lineJoin="round" />}
+            {/* TRACCIATO GPS CON SFUMATURA */}
+            {trail.length > 0 && (
+                <Polyline
+                    positions={trail}
+                    color="#22d3ee"
+                    weight={3}
+                    opacity={0.6}
+                    lineCap="round"
+                    smoothFactor={1}
+                />
+            )}
             
-            {/* CONTROLLI IN SOVRAPPOSIZIONE SULLA MAPPA */}
-            <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-4 z-[1000]">
-                <button onClick={(e) => { e.stopPropagation(); setAutoFollow(false); map.zoomIn(); }} className="w-12 h-12 rounded-2xl bg-black/40 backdrop-blur-md border border-white/10 flex items-center justify-center text-white shadow-lg active:scale-90 transition-all"><Plus size={24} /></button>
-                <button onClick={(e) => { e.stopPropagation(); setAutoFollow(false); map.zoomOut(); }} className="w-12 h-12 rounded-2xl bg-black/40 backdrop-blur-md border border-white/10 flex items-center justify-center text-white shadow-lg active:scale-90 transition-all"><Minus size={24} /></button>
+            {/* CONTROLLI MAPPA */}
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-3 z-[1000]">
+                <button onClick={() => handleZoom('in')} className="w-12 h-12 rounded-2xl bg-black/50 backdrop-blur-xl border border-white/20 flex items-center justify-center text-white shadow-xl active:scale-90 transition-all hover:bg-black/60">
+                    <Plus size={24} />
+                </button>
+                <button onClick={() => handleZoom('out')} className="w-12 h-12 rounded-2xl bg-black/50 backdrop-blur-xl border border-white/20 flex items-center justify-center text-white shadow-xl active:scale-90 transition-all hover:bg-black/60">
+                    <Minus size={24} />
+                </button>
                 <button
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        map.invalidateSize();
+                    onClick={() => {
                         setAutoFollow(true);
                         map.setView(coords, 18, { animate: true });
                     }}
-                    className={`w-12 h-12 rounded-2xl backdrop-blur-md border transition-all flex items-center justify-center shadow-lg active:scale-90 ${
-                        autoFollow ? 'bg-cyan-500/30 border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.4)]' : 'bg-black/40 border-white/10'
+                    className={`w-12 h-12 rounded-2xl backdrop-blur-xl border transition-all flex items-center justify-center shadow-xl active:scale-90 ${
+                        autoFollow ? 'bg-cyan-500/40 border-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.3)]' : 'bg-black/50 border-white/20'
                     }`}
                 >
-                    <Target size={24} className={autoFollow ? "text-cyan-400" : "text-white"} />
+                    <Target size={24} className={autoFollow ? "text-white" : "text-gray-300"} />
                 </button>
             </div>
         </>
@@ -243,8 +257,21 @@ const HomeView = ({ manager, onTabChange }) => {
                     <button onClick={() => window.open(`maps://?q=${lat},${lon}`, '_blank')} className="text-[9px] font-black bg-cyan-500/10 text-cyan-400 px-3 py-1 rounded-full border border-cyan-500/20 flex items-center gap-1 uppercase active:scale-95 transition-transform"><Navigation size={10} /> Apri in Mappe</button>
                 </div>
                 <div onPointerDown={(e) => e.stopPropagation()} onPointerMove={(e) => e.stopPropagation()} className="h-64 landscape:h-80 w-[80%] rounded-[2.5rem] overflow-hidden border border-white/10 shadow-2xl relative isolate touch-none">
-                    <MapContainer center={coords} zoom={18} maxZoom={21} style={{ height: '100%', width: '100%' }} zoomControl={false} attributionControl={false}>
-                        <TileLayer url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" maxZoom={20} maxNativeZoom={19} />
+                    <MapContainer
+                        center={coords}
+                        zoom={18}
+                        maxZoom={22} // Aumentato a 22 per permettere lo zoom profondo
+                        style={{ height: '100%', width: '100%' }}
+                        zoomControl={false}
+                        attributionControl={false}
+                        // Aggiungi queste per migliorare la fluidità
+                        preferCanvas={true}>
+                        <TileLayer
+                            url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                            maxZoom={22}
+                            maxNativeZoom={18} // ArcGIS World Imagery arriva nativo fino a 18/19
+                            errorTileUrl=""    // Questo elimina il box con l'errore
+                        />
                         <MapPlugins coords={coords} trail={smoothedTrail} autoFollow={autoFollow} setAutoFollow={setAutoFollow} />
                         <Marker position={coords} icon={boatIcon} />
                     </MapContainer>
