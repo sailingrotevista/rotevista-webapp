@@ -5,7 +5,7 @@ import L from 'leaflet';
 import {
   Battery, Power, Thermometer, Droplet, Flame,
   Shirt, Snowflake, Sofa, Navigation, Plus, Minus, Target,
-  AlertTriangle, ChevronRight
+  AlertTriangle, ChevronRight, Maximize2, Minimize2
 } from 'lucide-react';
 
 // ============================================================
@@ -47,6 +47,17 @@ const getShorePowerColor = (w, limitAmps, v, isShoreOn) => {
     return 'text-gray-100'; // Bianco di base se tutto OK
 };
 
+const toggleFullscreen = () => {
+    const element = document.getElementById("map-container");
+    if (!document.fullscreenElement) {
+        element.requestFullscreen().catch(err => {
+            console.error(`Errore nel fullscreen: ${err.message}`);
+        });
+    } else {
+        document.exitFullscreen();
+    }
+};
+
 /** Scala cromatica universale per Pozzetti (Freezer/Frigo) */
 const getHybridTempColor = (t) => {
     if (t === undefined || t === null) return 'text-white';
@@ -59,65 +70,134 @@ const getHybridTempColor = (t) => {
 };
 
 // ============================================================
-// 3. PLUGIN LOGICA E CONTROLLI MAPPA (Versione Evoluta)
+// 3. PLUGIN LOGICA E CONTROLLI MAPPA (Versione Evoluta + Fullscreen Fix)
 // ============================================================
-const MapPlugins = ({ coords, trail, autoFollow, setAutoFollow }) => {
+const MapPlugins = ({
+    coords,
+    trail,
+    autoFollow,
+    setAutoFollow,
+    isMapFull,
+    setIsMapFull
+}) => {
     const map = useMap();
 
-    // Gestione zoom limite: se arriviamo a 18/19 e non ci sono tile,
-    // forziamo comunque il setView sulla posizione
+    // =========================
+    // ZOOM CONTROL
+    // =========================
     const handleZoom = (type) => {
         setAutoFollow(false);
+
         const currentZoom = map.getZoom();
-        const nextZoom = type === 'in' ? currentZoom + 1 : currentZoom - 1;
-        // Se zoomiamo oltre il massimo supportato dalle tile,
-        // lasciamo che Leaflet gestisca lo zoom "digitale" (pixelato) senza bloccarlo
+        const nextZoom = type === 'in'
+            ? currentZoom + 1
+            : currentZoom - 1;
+
         map.setZoom(nextZoom);
     };
 
+    // =========================
+    // FULLSCREEN / RESIZE FIX
+    // =========================
+    useEffect(() => {
+        const id = requestAnimationFrame(() => {
+            map.invalidateSize(false);
+
+            if (autoFollow && coords[0] !== 0) {
+                map.setView(coords, map.getZoom(), {
+                    animate: false
+                });
+            }
+        });
+
+        return () => cancelAnimationFrame(id);
+    }, [isMapFull, autoFollow, coords, map]);
+
+    // =========================
+    // USER INTERACTION STOP AUTO FOLLOW
+    // =========================
     useMapEvents({
         dragstart: () => setAutoFollow(false),
         zoomstart: () => setAutoFollow(false),
     });
 
+    // =========================
+    // LIVE FOLLOW
+    // =========================
     useEffect(() => {
         if (autoFollow && coords[0] !== 0) {
-            map.setView(coords, map.getZoom(), { animate: true, duration: 0.5 });
+            map.setView(coords, map.getZoom(), {
+                animate: true,
+                duration: 0.5
+            });
         }
     }, [coords, autoFollow, map]);
 
     return (
         <>
-            {/* TRACCIATO GPS CON SFUMATURA */}
+            {/* =========================
+                GPS TRAIL
+            ========================= */}
             {trail.length > 0 && (
                 <Polyline
                     positions={trail}
                     color="#22d3ee"
                     weight={3}
-                    opacity={0.6}
+                    opacity={0.75}
                     lineCap="round"
-                    smoothFactor={1}
+                    lineJoin="round"
+                    smoothFactor={0}
                 />
             )}
-            
-            {/* CONTROLLI MAPPA */}
+
+            {/* =========================
+                CONTROLLI MAPPA
+            ========================= */}
             <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-3 z-[1000]">
-                <button onClick={() => handleZoom('in')} className="w-12 h-12 rounded-2xl bg-black/50 backdrop-blur-xl border border-white/20 flex items-center justify-center text-white shadow-xl active:scale-90 transition-all hover:bg-black/60">
+
+                <button
+                    onClick={() => handleZoom('in')}
+                    className="w-12 h-12 rounded-2xl bg-black/50 backdrop-blur-xl border border-white/20 flex items-center justify-center text-white shadow-xl active:scale-90 transition-all hover:bg-black/60"
+                >
                     <Plus size={24} />
                 </button>
-                <button onClick={() => handleZoom('out')} className="w-12 h-12 rounded-2xl bg-black/50 backdrop-blur-xl border border-white/20 flex items-center justify-center text-white shadow-xl active:scale-90 transition-all hover:bg-black/60">
+
+                <button
+                    onClick={() => handleZoom('out')}
+                    className="w-12 h-12 rounded-2xl bg-black/50 backdrop-blur-xl border border-white/20 flex items-center justify-center text-white shadow-xl active:scale-90 transition-all hover:bg-black/60"
+                >
                     <Minus size={24} />
                 </button>
+
                 <button
                     onClick={() => {
                         setAutoFollow(true);
-                        map.setView(coords, 18, { animate: true });
+                        map.flyTo(coords, map.getZoom(), {
+                            duration: 0.5
+                        });
                     }}
                     className={`w-12 h-12 rounded-2xl backdrop-blur-xl border transition-all flex items-center justify-center shadow-xl active:scale-90 ${
-                        autoFollow ? 'bg-cyan-500/40 border-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.3)]' : 'bg-black/50 border-white/20'
+                        autoFollow
+                            ? 'bg-cyan-500/40 border-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.3)]'
+                            : 'bg-black/50 border-white/20'
                     }`}
                 >
                     <Target size={24} className={autoFollow ? "text-white" : "text-gray-300"} />
+                </button>
+
+                {/* FULLSCREEN TOGGLE */}
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setAutoFollow(false);
+                        setIsMapFull(prev => !prev);
+                    }}
+                    className="w-12 h-12 rounded-2xl bg-black/50 backdrop-blur-xl border border-white/20 flex items-center justify-center text-white shadow-xl active:scale-90 transition-all hover:bg-black/60"
+                >
+                    {isMapFull
+                        ? <Minimize2 size={20} />
+                        : <Maximize2 size={20} />
+                    }
                 </button>
             </div>
         </>
@@ -131,6 +211,7 @@ const HomeView = ({ manager, onTabChange }) => {
     const { data, toggleSwitch, apiUrl, error, isUpdating } = manager;
     const [autoFollow, setAutoFollow] = useState(true);
     const [showSSLModal, setShowSSLModal] = useState(false);
+    const [isMapFull, setIsMapFull] = useState(false);
 
     useEffect(() => {
         if (error) setShowSSLModal(true);
@@ -144,9 +225,14 @@ const HomeView = ({ manager, onTabChange }) => {
     // --- ALGORITMO DI SMOOTHING CATMULL-ROM PER LA TRACCIA GPS ---
     const smoothedTrail = useMemo(() => {
         const rawHistory = data?.environment?.gps_history || [];
-        if (rawHistory.length < 4) return rawHistory.map(h => [parseFloat(h.lat), parseFloat(h.lon)]);
+        
+        // Aggiungiamo coords (lat, lon) come ultimo punto dinamico per la visualizzazione
+        const currentPos = { lat: coords[0], lon: coords[1] };
+        const pointsWithCurrent = [...rawHistory, currentPos];
 
-        const points = rawHistory.map(h => ({ x: parseFloat(h.lat), y: parseFloat(h.lon) }));
+        if (pointsWithCurrent.length < 4) return pointsWithCurrent.map(h => [parseFloat(h.lat), parseFloat(h.lon)]);
+
+        const points = pointsWithCurrent.map(h => ({ x: parseFloat(h.lat), y: parseFloat(h.lon) }));
         let smoothPoints = [];
 
         for (let i = 0; i < points.length - 1; i++) {
@@ -164,7 +250,7 @@ const HomeView = ({ manager, onTabChange }) => {
         }
         smoothPoints.push([points[points.length - 1].x, points[points.length - 1].y]);
         return smoothPoints;
-    }, [data?.environment?.gps_history]);
+    }, [data?.environment?.gps_history, coords]); // Aggiunto coords come dipendenza
 
     return (
         <div className="px-2 pt-5 pb-4 landscape:p-2 landscape:pt-4 space-y-2 landscape:space-y-2">
@@ -190,7 +276,6 @@ const HomeView = ({ manager, onTabChange }) => {
             )}
             
             {/* --- SEZIONE 1: ENERGIA (Con logica dinamica per Watt e Segni) --- */}
-            {/* --- SEZIONE 1: ENERGIA --- */}
             <div className="grid grid-cols-2 gap-2 landscape:gap-2">
                 {/* CARD BATTERIA */}
                 <div onClick={() => onTabChange(1)} className="cursor-pointer active:scale-95 transition-transform">
@@ -243,36 +328,50 @@ const HomeView = ({ manager, onTabChange }) => {
                 </div>
 
                 {/* Interruttori Shelly (Inibiti durante il sync) */}
-                <div className={`w-full md:w-1/2 bg-white/5 rounded-[2rem] flex flex-col divide-y divide-white/5 border border-white/10 overflow-hidden shadow-xl transition-all duration-300 ${isUpdating ? 'opacity-60 grayscale-[0.5]' : 'opacity-100'}`}>
+                <div className={`w-full md:w-1/2 bg-white/5 rounded-[2rem] flex flex-col divide-y divide-white/5 border border-white/10 overflow-hidden shadow-xl  ${isUpdating ? 'opacity-60 grayscale-[0.5]' : 'opacity-100'}`}>
                     <QuickActionRow icon={<Droplet className="text-blue-400"/>} name="Pompa Acqua" isOn={data?.switches?.pump_on} onToggle={(v) => toggleSwitch('pump', v)} disabled={isUpdating} />
                     <QuickActionRow icon={<Flame className="text-orange-400"/>} name="Boiler" isOn={data?.switches?.boiler_on} onToggle={(v) => toggleSwitch('boiler', v)} disabled={isUpdating} />
                     <QuickActionRow icon={<Shirt className="text-purple-400"/>} name="Lavatrice" isOn={data?.switches?.washing_machine_on} onToggle={(v) => toggleSwitch('washer', v)} disabled={isUpdating} />
                 </div>
             </div>
 
-            {/* --- SEZIONE 4: MAPPA SATELLITARE (Centrata all'80%, h-80 in landscape) --- */}
+            {/* --- SEZIONE 4: MAPPA SATELLITARE --- */}
             <div className="space-y-2 pb-22 flex flex-col items-center">
-                <div className="flex justify-between items-center w-[80%] px-2 text-white">
-                    <h3 className="text-[10px] font-black text-gray-500 tracking-widest uppercase font-mono opacity-50">Posizione GPS</h3>
-                    <button onClick={() => window.open(`maps://?q=${lat},${lon}`, '_blank')} className="text-[9px] font-black bg-cyan-500/10 text-cyan-400 px-3 py-1 rounded-full border border-cyan-500/20 flex items-center gap-1 uppercase active:scale-95 transition-transform"><Navigation size={10} /> Apri in Mappe</button>
-                </div>
-                <div onPointerDown={(e) => e.stopPropagation()} onPointerMove={(e) => e.stopPropagation()} className="h-64 landscape:h-80 w-[80%] rounded-[2.5rem] overflow-hidden border border-white/10 shadow-2xl relative isolate touch-none">
+                {!isMapFull && (
+                    <div className="flex justify-between items-center w-[80%] px-2 text-white">
+                        <h3 className="text-[10px] font-black text-gray-500 tracking-widest uppercase font-mono opacity-50">Posizione GPS</h3>
+                        <button onClick={() => window.open(`maps://?q=${lat},${lon}`, '_blank')} className="text-[9px] font-black bg-cyan-500/10 text-cyan-400 px-3 py-1 rounded-full border border-cyan-500/20 flex items-center gap-1 uppercase active:scale-95 transition-transform"><Navigation size={10} /> Apri in Mappe</button>
+                    </div>
+                )}
+
+                {/* Aggiungiamo la classe condizionale map-full-screen */}
+                <div
+                    className={`${isMapFull ? 'map-full-screen' : 'h-64 landscape:h-80 w-[80%] rounded-[2.5rem]'} overflow-hidden border border-white/10 shadow-2xl relative isolate transition-opacity duration-200`}
+                >
+                
                     <MapContainer
                         center={coords}
                         zoom={18}
-                        maxZoom={22} // Aumentato a 22 per permettere lo zoom profondo
+                        maxZoom={22}
                         style={{ height: '100%', width: '100%' }}
                         zoomControl={false}
                         attributionControl={false}
-                        // Aggiungi queste per migliorare la fluidità
-                        preferCanvas={true}>
+                    >
                         <TileLayer
                             url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
                             maxZoom={22}
-                            maxNativeZoom={18} // ArcGIS World Imagery arriva nativo fino a 18/19
-                            errorTileUrl=""    // Questo elimina il box con l'errore
+                            maxNativeZoom={18}
+                            errorTileUrl=""
                         />
-                        <MapPlugins coords={coords} trail={smoothedTrail} autoFollow={autoFollow} setAutoFollow={setAutoFollow} />
+                        {/* Passiamo setIsMapFull qui dentro */}
+                        <MapPlugins
+                            coords={coords}
+                            trail={smoothedTrail}
+                            autoFollow={autoFollow}
+                            setAutoFollow={setAutoFollow}
+                            isMapFull={isMapFull}
+                            setIsMapFull={setIsMapFull}
+                        />
                         <Marker position={coords} icon={boatIcon} />
                     </MapContainer>
                 </div>

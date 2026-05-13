@@ -73,3 +73,28 @@ body {
 .night-mode-active .boat-marker {
     filter: drop-shadow(0 0 5px red) brightness(1.5);
 }
+
+:fullscreen {
+    background-color: #000;
+    padding: 20px; /* Un po' di respiro */
+}
+
+:fullscreen #map-container {
+    width: 100% !important;
+    height: 100% !important;
+    border-radius: 0 !important;
+}
+
+/* Assicura che l'overlay copra tutto */
+.map-full-screen {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    z-index: 9999 !important;
+    touch-action: none; /* Permette il panning della mappa */
+}
