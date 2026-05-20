@@ -1,22 +1,39 @@
 /* --- File: src/views/HomeView.jsx --- */
 import React, { useEffect, useState, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Polyline, useMap, useMapEvents } from 'react-leaflet';
+// Aggiunto Circle agli import di react-leaflet
+import { MapContainer, TileLayer, Marker, Polyline, Circle, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import {
   Battery, Power, Thermometer, Droplet, Flame,
   Shirt, Snowflake, Sofa, Navigation, Plus, Minus, Target,
-  AlertTriangle, ChevronRight, Maximize2, Minimize2
+  AlertTriangle, ChevronRight, Maximize2, Minimize2, Anchor // Aggiunto Anchor
 } from 'lucide-react';
 
 // ============================================================
-// 1. CONFIGURAZIONE ICONA BARCA (SVG/EMOJI)
+// 1. CONFIGURAZIONE ICONE (Barca e Ancora)
 // ============================================================
 const boatIcon = new L.DivIcon({
-    html: `<div style="font-size: 20px; opacity: 0.5; filter: drop-shadow(0 0 5px black);">⛵</div>`,
+    html: `<div style="font-size: 20px; opacity: 0.8; filter: drop-shadow(0 0 5px black);">⛵</div>`,
     className: 'boat-marker',
     iconSize: [30, 30],
     iconAnchor: [15, 15]
 });
+
+const anchorMarkerIcon = new L.DivIcon({
+    html: `<div style="font-size: 18px; filter: drop-shadow(0 0 3px black);">⚓</div>`,
+    className: 'anchor-marker',
+    iconSize: [20, 20],
+    iconAnchor: [10, 10]
+});
+
+const formatNautic = (val, isLat) => {
+        if (!val) return '';
+        const hemi = isLat ? (val >= 0 ? "N" : "S") : (val >= 0 ? "E" : "W");
+        const absVal = Math.abs(val);
+        const deg = Math.floor(absVal);
+        const min = ((absVal - deg) * 60).toFixed(4);
+        return `${deg} ${min}${hemi}`;
+    };
 
 // ============================================================
 // 2. LOGICHE COLORE DINAMICO
@@ -172,7 +189,8 @@ const MapPlugins = ({
                 <button
                     onClick={() => {
                         setAutoFollow(true);
-                        map.flyTo(coords, map.getZoom(), {
+                        // Forza il ritorno alle coordinate e allo zoom di default (18)
+                        map.flyTo(coords, 18, {
                             duration: 0.5
                         });
                     }}
@@ -212,6 +230,7 @@ const HomeView = ({ manager, onTabChange }) => {
     const [autoFollow, setAutoFollow] = useState(true);
     const [showSSLModal, setShowSSLModal] = useState(false);
     const [isMapFull, setIsMapFull] = useState(false);
+    const [isCopied, setIsCopied] = useState(false);
 
     useEffect(() => {
         if (error) setShowSSLModal(true);
@@ -340,7 +359,81 @@ const HomeView = ({ manager, onTabChange }) => {
                 {!isMapFull && (
                     <div className="flex justify-between items-center w-[80%] px-2 text-white">
                         <h3 className="text-[10px] font-black text-gray-500 tracking-widest uppercase font-mono opacity-50">Posizione GPS</h3>
-                        <button onClick={() => window.open(`maps://?q=${lat},${lon}`, '_blank')} className="text-[9px] font-black bg-cyan-500/10 text-cyan-400 px-3 py-1 rounded-full border border-cyan-500/20 flex items-center gap-1 uppercase active:scale-95 transition-transform"><Navigation size={10} /> Apri in Mappe</button>
+                        
+                        {/* Status Ancora Informativo Completo (Ordinato, Cliccabile e Compatibile Safari) */}
+                        <div className="flex items-center gap-2">
+                            <span
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (!data?.anchor?.status) return;
+                                    
+                                    // Genera la stringa di testo da copiare
+                                    const textToCopy = `⛵ ROTEVISTA: [${data.anchor.status}] | D: ${data.anchor.drift.toFixed(1)}m | ${formatNautic(data.anchor.lat, true)} ${formatNautic(data.anchor.lon, false)} | R: ${data.anchor.radius.toFixed(0)}m`;
+                                    
+                                    // --- LOGICA DI COPIA COMPATIBILE SAFARI / HTTP (LOCAL BOAT NETWORK) ---
+                                    if (navigator.clipboard && window.isSecureContext) {
+                                        navigator.clipboard.writeText(textToCopy).then(() => {
+                                            setIsCopied(true);
+                                            setTimeout(() => setIsCopied(false), 2000);
+                                        });
+                                    } else {
+                                        const textArea = document.createElement("textarea");
+                                        textArea.value = textToCopy;
+                                        textArea.style.position = "fixed";
+                                        textArea.style.opacity = "0";
+                                        document.body.appendChild(textArea);
+                                        textArea.focus();
+                                        textArea.select();
+                                        try {
+                                            document.execCommand('copy');
+                                            setIsCopied(true);
+                                            setTimeout(() => setIsCopied(false), 2000);
+                                        } catch (err) {
+                                            console.error("Errore copia fallback:", err);
+                                        }
+                                        document.body.removeChild(textArea);
+                                    }
+                                }}
+                                className={`text-[9px] font-black px-3 py-1 rounded-full border flex items-center gap-2 uppercase transition-all duration-300 cursor-pointer active:scale-95 shadow-md ${
+                                    isCopied
+                                        ? 'bg-green-500/20 text-green-400 border-green-500/40'
+                                        : data?.anchor?.status === 'LOCKED'
+                                            ? 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30 hover:bg-cyan-500/20'
+                                            : (data?.anchor?.status === 'DRAGGING' || data?.anchor?.status === 'DRIFTING')
+                                                ? 'bg-red-500/20 text-red-500 border-red-500/40 animate-pulse'
+                                                : 'bg-yellow-500/15 text-yellow-500 border-yellow-500/30 hover:bg-yellow-500/20'
+                                }`}
+                            >
+                                <Anchor size={10} className={data?.anchor?.status === 'LOCKED' ? "" : "animate-spin-slow"} />
+                                
+                                {isCopied ? (
+                                    <span className="font-mono text-[8px] text-green-400 tracking-wider">✓ COPIATO IN APPUNTI</span>
+                                ) : data?.anchor?.status ? (
+                                    <div className="flex items-center gap-2 divide-x divide-white/10">
+                                        {/* 1. STATO */}
+                                        <span className="pr-1 text-white">{data.anchor.status}</span>
+                                        
+                                        {/* 2. DRIFT (Spostato in seconda posizione per priorità) */}
+                                        <span className={`pl-2 ${data.anchor.drift > 5 ? 'text-red-400 font-bold animate-pulse' : 'opacity-90'}`}>
+                                            D: {data.anchor.drift.toFixed(1)}m
+                                        </span>
+                                        
+                                        {/* 3. COORDINATE NAUTICHE */}
+                                        <span className="pl-2 opacity-85 font-mono tracking-tight text-gray-200">
+                                            {formatNautic(data.anchor.lat, true)} {formatNautic(data.anchor.lon, false)}
+                                        </span>
+                                        
+                                        {/* 4. RAGGIO (Catena) */}
+                                        <span className="pl-2 opacity-70">R: {data.anchor.radius.toFixed(0)}m</span>
+                                        
+                                        {/* 5. CONFIDENZA */}
+                                        <span className="pl-2 opacity-50 text-[8px]">C: {Math.round(data.anchor.confidence)}%</span>
+                                    </div>
+                                ) : (
+                                    <span>NAVIGAZIONE</span>
+                                )}
+                            </span>
+                        </div>
                     </div>
                 )}
 
@@ -372,7 +465,34 @@ const HomeView = ({ manager, onTabChange }) => {
                             isMapFull={isMapFull}
                             setIsMapFull={setIsMapFull}
                         />
-                        <Marker position={coords} icon={boatIcon} />
+
+                        {/* CERCHIO DI SICUREZZA (Visibile solo se lo stato è LOCKED o in ALLARME) */}
+                        {data?.anchor?.lat && data?.anchor?.lon && data.anchor.radius > 0 &&
+                         (data.anchor.status === 'LOCKED' || data.anchor.status === 'DRAGGING' || data.anchor.status === 'DRIFTING') && (
+                            <Circle
+                                center={[data.anchor.lat, data.anchor.lon]}
+                                radius={data.anchor.radius + 15}
+                                pathOptions={{
+                                    color: (data.anchor.status === 'DRAGGING' || data.anchor.status === 'DRIFTING') ? '#ef4444' : '#22d3ee',
+                                    fillOpacity: 0,
+                                    weight: 1.5,
+                                    dashArray: '8, 12',
+                                    interactive: false
+                                }}
+                            />
+                        )}
+
+                        {/* MARKER POSIZIONE PREVISTA ANCORA (Sempre visibile se calcolata) */}
+                        {data?.anchor?.lat && data?.anchor?.lon && (
+                            <Marker
+                                position={[data.anchor.lat, data.anchor.lon]}
+                                icon={anchorMarkerIcon}
+                                zIndexOffset={500}
+                            />
+                        )}
+
+                        {/* MARKER BARCA (Sempre sopra a tutto) */}
+                        <Marker position={coords} icon={boatIcon} zIndexOffset={1000} />
                     </MapContainer>
                 </div>
             </div>
