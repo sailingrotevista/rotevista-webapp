@@ -358,7 +358,7 @@ const HomeView = ({ manager, onTabChange }) => {
             <div className="space-y-2 pb-22 flex flex-col items-center">
                 {!isMapFull && (
                     <div className="flex justify-between items-center w-[80%] px-2 text-white">
-                        <h3 className="text-[10px] font-black text-gray-500 tracking-widest uppercase font-mono opacity-50">Posizione GPS</h3>
+                        <h3 className="text-[10px] font-black text-gray-500 tracking-widest uppercase font-mono opacity-50"></h3>{/* prima di h3 era Posizione GPS ora dovrebbe avere un altro nome */}
                         
                         {/* Status Ancora Informativo Completo (Ordinato, Cliccabile e Compatibile Safari) */}
                         <div className="flex items-center gap-2">
@@ -367,8 +367,11 @@ const HomeView = ({ manager, onTabChange }) => {
                                     e.stopPropagation();
                                     if (!data?.anchor?.status) return;
                                     
-                                    // Genera la stringa di testo da copiare
-                                    const textToCopy = `⛵ ROTEVISTA: [${data.anchor.status}] | D: ${data.anchor.drift.toFixed(1)}m | ${formatNautic(data.anchor.lat, true)} ${formatNautic(data.anchor.lon, false)} | R: ${data.anchor.radius.toFixed(0)}m`;
+                                    // Genera una stringa pulita e intelligente in base allo stato attivo
+                                    const isArmed = (data.anchor.status === 'LOCKED' || data.anchor.status === 'DRAGGING' || data.anchor.status === 'DRIFTING');
+                                    const textToCopy = isArmed
+                                        ? `⛵ ROTEVISTA: [${data.anchor.description || data.anchor.status}] | D: ${data.anchor.drift.toFixed(1)}m | ${formatNautic(data.anchor.lat, true)} ${formatNautic(data.anchor.lon, false)} | R: ${data.anchor.radius.toFixed(0)}m`
+                                        : `⛵ ROTEVISTA: ${data.anchor.description || data.anchor.status}`;
                                     
                                     // --- LOGICA DI COPIA COMPATIBILE SAFARI / HTTP (LOCAL BOAT NETWORK) ---
                                     if (navigator.clipboard && window.isSecureContext) {
@@ -399,9 +402,11 @@ const HomeView = ({ manager, onTabChange }) => {
                                         ? 'bg-green-500/20 text-green-400 border-green-500/40'
                                         : data?.anchor?.status === 'LOCKED'
                                             ? 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30 hover:bg-cyan-500/20'
-                                            : (data?.anchor?.status === 'DRAGGING' || data?.anchor?.status === 'DRIFTING')
-                                                ? 'bg-red-500/20 text-red-500 border-red-500/40 animate-pulse'
-                                                : 'bg-yellow-500/15 text-yellow-500 border-yellow-500/30 hover:bg-yellow-500/20'
+                                            : (data?.anchor?.status === 'MOVING' || data?.anchor?.status === 'IN_PORTO')
+                                                ? 'bg-green-500/15 text-green-400 border-green-500/30 hover:bg-green-500/20' // Verde per stati stabili di sicurezza
+                                                : (data?.anchor?.status === 'DRAGGING' || data?.anchor?.status === 'DRIFTING')
+                                                    ? 'bg-red-500/20 text-red-500 border-red-500/40 animate-pulse'
+                                                    : 'bg-yellow-500/15 text-yellow-500 border-yellow-500/30 hover:bg-yellow-500/20' // Giallo/Arancione solo per transitori (Learning/Settling)
                                 }`}
                             >
                                 <Anchor size={10} className={data?.anchor?.status === 'LOCKED' ? "" : "animate-spin-slow"} />
@@ -410,24 +415,35 @@ const HomeView = ({ manager, onTabChange }) => {
                                     <span className="font-mono text-[8px] text-green-400 tracking-wider">✓ COPIATO IN APPUNTI</span>
                                 ) : data?.anchor?.status ? (
                                     <div className="flex items-center gap-2 divide-x divide-white/10">
-                                        {/* 1. STATO */}
-                                        <span className="pr-1 text-white">{data.anchor.status}</span>
-                                        
-                                        {/* 2. DRIFT (Spostato in seconda posizione per priorità) */}
-                                        <span className={`pl-2 ${data.anchor.drift > 5 ? 'text-red-400 font-bold animate-pulse' : 'opacity-90'}`}>
-                                            D: {data.anchor.drift.toFixed(1)}m
+                                        {/* 1. STATO DINAMICO / DESCRIZIONE DI DETTAGLIO */}
+                                        <span className="pr-1 text-white">
+                                            {data.anchor.description || data.anchor.status}
                                         </span>
                                         
-                                        {/* 3. COORDINATE NAUTICHE */}
-                                        <span className="pl-2 opacity-85 font-mono tracking-tight text-gray-200">
-                                            {formatNautic(data.anchor.lat, true)} {formatNautic(data.anchor.lon, false)}
-                                        </span>
+                                        {/* Mostra le metriche fisiche solo se l'ancora è armata o attiva (LOCKED, DRAGGING, DRIFTING) */}
+                                        {(data.anchor.status === 'LOCKED' || data.anchor.status === 'DRAGGING' || data.anchor.status === 'DRIFTING') && (
+                                            <>
+                                                {/* 2. DRIFT (Spostato in seconda posizione per priorità) */}
+                                                <span className={`pl-2 ${data.anchor.drift > 5 ? 'text-red-400 font-bold animate-pulse' : 'opacity-90'}`}>
+                                                    D: {data.anchor.drift.toFixed(1)}m
+                                                </span>
+                                                
+                                                {/* 3. COORDINATE NAUTICHE */}
+                                                <span className="pl-2 opacity-85 font-mono tracking-tight text-gray-200">
+                                                    {formatNautic(data.anchor.lat, true)} {formatNautic(data.anchor.lon, false)}
+                                                </span>
+                                                
+                                                {/* 4. RAGGIO (Catena) */}
+                                                <span className="pl-2 opacity-70">R: {data.anchor.radius.toFixed(0)}m</span>
+                                            </>
+                                        )}
                                         
-                                        {/* 4. RAGGIO (Catena) */}
-                                        <span className="pl-2 opacity-70">R: {data.anchor.radius.toFixed(0)}m</span>
-                                        
-                                        {/* 5. CONFIDENZA */}
-                                        <span className="pl-2 opacity-50 text-[8px]">C: {Math.round(data.anchor.confidence)}%</span>
+                                        {/* Mostra la confidenza (o il progresso) sempre, escludendo la navigazione libera e l'assestamento iniziale */}
+                                        {data.anchor.status !== 'MOVING' && data.anchor.status !== 'SETTLING' && (
+                                            <span className="pl-2 opacity-50 text-[8px]">
+                                                {data.anchor.status === 'LEARNING' ? 'PROG.' : 'C'}: {Math.round(data.anchor.confidence)}%
+                                            </span>
+                                        )}
                                     </div>
                                 ) : (
                                     <span>NAVIGAZIONE</span>
