@@ -90,7 +90,7 @@ const EnergyView = ({ manager }) => {
           <div className="grid grid-cols-3 gap-2 text-center">
             <SolarStat title="OGGI" val={data.solar.today_kwh} color="text-orange-400" />
             <SolarStat title="PREV." val={data.solar.forecast_kwh} color="text-yellow-400" />
-            <SolarStat title="IERI" val={data.solar.yesterday_kwh} color="text-gray-500" />
+            <SolarStat title="IERI" val={data.solar.yesterday_kwh} color="text-gray-300" />
           </div>
           
           {(() => {
@@ -134,7 +134,7 @@ const EnergyView = ({ manager }) => {
                         })}
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#ffffff40" vertical={false} />
-                    <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fill: '#666', fontSize: 11, fontWeight: 'bold'}} />
+                    <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fill: '#d1d5db', fontSize: 11, fontWeight: 'bold'}} />
                     <YAxis domain={[0, 100]} ticks={[0, 50, 100]} hide />
                     <Bar dataKey={(d) => [d.min, d.max]} radius={[6, 6, 6, 6]} barSize={18} isAnimationActive={false}>
                         {weeklyData.map((entry, index) => (
@@ -146,7 +146,7 @@ const EnergyView = ({ manager }) => {
                         }} />
                         <LabelList dataKey="min" position="bottom" content={(props) => {
                             const { x, y, width, value, height } = props;
-                            return <text x={x + width / 2} y={y + height + 18} fill={value < 40 ? "#ef4444" : "#666"} fontSize="10" fontWeight="bold" textAnchor="middle">{value.toFixed(0)}%</text>;
+                            return <text x={x + width / 2} y={y + height + 18} fill={value < 40 ? "#ef4444" : "#d1d5db"} fontSize="10" fontWeight="bold" textAnchor="middle">{value.toFixed(0)}%</text>;
                         }} />
                     </Bar>
                 </BarChart>
@@ -161,7 +161,7 @@ const EnergyView = ({ manager }) => {
 
 const SolarStat = ({ title, val, color }) => (
     <div className="bg-white/5 p-3 rounded-2xl border border-white/5">
-        <div className="text-[8px] font-black text-gray-600 mb-1 tracking-tighter uppercase">{title}</div>
+        <div className="text-[8px] font-black text-gray-300 mb-1 tracking-tighter uppercase">{title}</div>
         <div className={`text-xl font-black ${color}`}>{val.toFixed(1)}<span className="text-[10px] ml-0.5 opacity-50">kWh</span></div>
     </div>
 );
@@ -172,8 +172,8 @@ const SolarBar = ({ label, current, localMax, globalMax }) => {
     return (
         <div className="space-y-1.5">
             <div className="flex justify-between text-[10px] font-black">
-                <span className="text-gray-500 font-mono tracking-tighter uppercase">{label}</span>
-                <span className="text-orange-400 font-mono">{current}W <span className="text-gray-700 font-normal uppercase">/ Peak {localMax}W</span></span>
+                <span className="text-gray-300 font-mono tracking-tighter uppercase">{label}</span>
+                <span className="text-orange-400 font-mono">{current}W <span className="text-gray-300 font-bold uppercase">/ Peak {localMax}W</span></span>
             </div>
             <div className="relative h-2.5 w-full">
                 <div className="absolute inset-0 bg-white/5 rounded-full"></div>

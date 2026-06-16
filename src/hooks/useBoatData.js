@@ -88,15 +88,38 @@ export const useBoatData = () => {
     };
 
     /**
-     * 4. CICLI DI AGGIORNAMENTO (Lifecycle)
-     */
+         * 4. CICLI DI AGGIORNAMENTO (Lifecycle con sospensione intelligente)
+         */
 
-    // Effetto Polling: Scarica i dati ogni 5 secondi
-    useEffect(() => {
-        fetchData();
-        const interval = setInterval(fetchData, 5000);
-        return () => clearInterval(interval);
-    }, []);
+        // Effetto Polling con Watchdog di Visibilità (Page Visibility API)
+        useEffect(() => {
+            let intervalId = null;
+
+            const handleVisibilityChange = () => {
+                if (document.visibilityState === 'visible') {
+                    // Al risveglio scarica subito i dati freschi e riavvia il timer
+                    fetchData();
+                    intervalId = setInterval(fetchData, 5000);
+                } else {
+                    // Se la scheda va in background o lo schermo si blocca, spegne il polling
+                    if (intervalId) {
+                        clearInterval(intervalId);
+                        intervalId = null;
+                    }
+                }
+            };
+
+            // Esegue il primo controllo e avvio
+            handleVisibilityChange();
+
+            // Ascolta i cambi di visibilità del browser (blocco schermo, cambio scheda)
+            document.addEventListener('visibilitychange', handleVisibilityChange);
+            
+            return () => {
+                if (intervalId) clearInterval(intervalId);
+                document.removeEventListener('visibilitychange', handleVisibilityChange);
+            };
+        }, []);
 
     // Effetto Watchdog: Aggiorna il contatore dei secondi "Dati ricevuti da X secondi"
     useEffect(() => {

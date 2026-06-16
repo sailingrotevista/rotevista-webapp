@@ -41,7 +41,7 @@ const formatNautic = (val, isLat) => {
 
 /** Scala Sicurezza Voltaggio AC Banchina */
 const getShoreVoltageColor = (v) => {
-    if (!v || v < 50) return 'text-gray-500';
+    if (!v || v < 50) return 'text-gray-300';
     if (v < 195 || v > 255) return 'text-red-500';
     if (v < 210 || v > 245) return 'text-orange-500';
     return 'text-gray-400';
@@ -287,7 +287,7 @@ const HomeView = ({ manager, onTabChange }) => {
                         </div>
                         <div className="space-y-2 pt-2">
                             <button onClick={() => window.open(`${apiUrl}`, '_blank')} className="w-full bg-red-500 hover:bg-red-600 text-white font-black py-3.5 rounded-2xl transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2 uppercase text-[11px] tracking-widest font-mono">1. Autorizza SSL</button>
-                            <p className="text-[9px] text-gray-600 font-black uppercase tracking-tighter text-center">Poi chiudi la scheda e torna qui</p>
+                            <p className="text-[9px] text-gray-300 font-black uppercase tracking-tighter text-center">Poi chiudi la scheda e torna qui</p>
                             <button onClick={() => setShowSSLModal(false)} className="w-full bg-white/5 hover:bg-white/10 text-white font-black py-3 rounded-2xl border border-white/10 active:scale-95 uppercase text-[11px] tracking-widest font-mono">2. Ho fatto</button>
                         </div>
                     </div>
@@ -358,7 +358,7 @@ const HomeView = ({ manager, onTabChange }) => {
             <div className="space-y-2 pb-22 flex flex-col items-center">
                 {!isMapFull && (
                     <div className="flex justify-between items-center w-[80%] px-2 text-white">
-                        <h3 className="text-[10px] font-black text-gray-500 tracking-widest uppercase font-mono opacity-50"></h3>{/* prima di h3 era Posizione GPS ora dovrebbe avere un altro nome */}
+                        <h3 className="text-[10px] font-black text-gray-300 tracking-widest uppercase font-mono opacity-50"></h3>{/* prima di h3 era Posizione GPS ora dovrebbe avere un altro nome */}
                         
                         {/* Status Ancora Informativo Completo (Ordinato, Cliccabile e Compatibile Safari) */}
                         <div className="flex items-center gap-2">
@@ -523,7 +523,7 @@ const HomeView = ({ manager, onTabChange }) => {
 const StatusBox = ({ icon, title, value, sub }) => (
     <div className="bg-white/5 p-5 rounded-[2rem] border border-white/10 flex flex-row items-center justify-between shadow-lg text-white group hover:bg-white/10 transition-colors h-full">
         <div className="flex flex-col">
-            <div className="flex items-center gap-1 text-gray-500 text-[9px] font-black tracking-widest uppercase whitespace-nowrap">{icon} {title}</div>
+            <div className="flex items-center gap-1 text-gray-300 text-[9px] font-black tracking-widest uppercase whitespace-nowrap">{icon} {title}</div>
             <div className="text-3xl font-black mt-1 tracking-tighter">{value}</div>
         </div>
         <div className="text-[18px] text-gray-200 font-black uppercase tracking-tight text-right pl-2 leading-tight">{sub}</div>
@@ -533,7 +533,7 @@ const StatusBox = ({ icon, title, value, sub }) => (
 const TempCard = ({ icon, title, val, color, valueColor = "text-white" }) => (
     <div className="bg-white/5 py-4 landscape:py-3 rounded-3xl border border-white/5 flex flex-col items-center gap-1 text-center shadow-md hover:bg-white/10 transition-colors h-full justify-center text-white">
         <div className={color}>{icon}</div>
-        <div className="text-[8px] font-black text-gray-600 uppercase tracking-tighter mt-1">{title}</div>
+        <div className="text-[8px] font-black text-gray-300 uppercase tracking-tighter mt-1">{title}</div>
         <div className={`text-lg font-black ${valueColor}`}>{val?.toFixed(1) || '-'}°</div>
     </div>
 );

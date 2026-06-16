@@ -112,9 +112,9 @@ function App() {
 }
 
 const TabItem = ({ icon, label, isActive, onClick }) => (
-  <button onClick={onClick} className={`flex flex-col items-center gap-1 transition-all duration-300 ${isActive ? 'text-cyan-400 scale-110' : 'text-gray-500'}`}>
+  <button onClick={onClick} className={`flex flex-col items-center gap-1 transition-all duration-300 ${isActive ? 'text-cyan-400 scale-110' : 'text-gray-300'}`}>
     {React.cloneElement(icon, { size: 20, strokeWidth: isActive ? 2.5 : 2 })}
-    <span className={`text-[9px] font-black uppercase tracking-tighter ${isActive ? 'opacity-100' : 'opacity-40'}`}>{label}</span>
+    <span className={`text-[9px] font-black uppercase tracking-tighter ${isActive ? 'opacity-100' : 'opacity-60'}`}>{label}</span>
   </button>
 );
 

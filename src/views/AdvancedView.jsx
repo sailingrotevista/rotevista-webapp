@@ -26,10 +26,10 @@ const AdvancedView = ({ manager }) => {
             <header className="px-2 pt-4 flex justify-between items-center">
                 <div>
                     <h2 className="text-xl font-black text-white flex items-center gap-2">
-                        <Settings2 className="text-gray-500" size={20} />
+                        <Settings2 className="text-gray-300" size={20} />
                         CONTROLLI AVANZATI
                     </h2>
-                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">
+                    <p className="text-[10px] text-gray-300 font-bold uppercase tracking-widest mt-1">
                         Gestione Sistemi di Bordo
                     </p>
                 </div>
@@ -39,7 +39,7 @@ const AdvancedView = ({ manager }) => {
                 SEZIONE MULTIPLUS E SHORE LIMIT
                 ============================================================ */}
             <div className="space-y-3">
-                <h3 className="text-[10px] font-black text-gray-500 tracking-[0.2em] uppercase px-2">
+                <h3 className="text-[10px] font-black text-gray-300 tracking-[0.2em] uppercase px-2">
                     Inverter / Caricabatterie
                 </h3>
                 
@@ -54,7 +54,7 @@ const AdvancedView = ({ manager }) => {
                             </div>
                             <div className="flex flex-col">
                                 <span className="text-[15px] font-black text-white tracking-tight uppercase">Banchina</span>
-                                <span className={`text-[10px] font-black uppercase tracking-widest mt-0.5 ${multiplusOn ? 'text-yellow-500' : 'text-gray-500'}`}>
+                                <span className={`text-[10px] font-black uppercase tracking-widest mt-0.5 ${multiplusOn ? 'text-yellow-500' : 'text-gray-300'}`}>
                                     {multiplusOn ? "Stato: ACCESO (Pass-through)" : "Stato: SOLO INVERTER"}
                                 </span>
                             </div>
@@ -83,7 +83,7 @@ const AdvancedView = ({ manager }) => {
                                 </div>
                                 <div className="flex flex-col">
                                     <span className="text-sm font-black uppercase text-white tracking-tight">Limite Banchina</span>
-                                    <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Seleziona Ampere AC</span>
+                                    <span className="text-[9px] font-bold text-gray-300 uppercase tracking-widest">Seleziona Ampere AC</span>
                                 </div>
                             </div>
                             {/* Display Valore Attuale */}
@@ -103,7 +103,7 @@ const AdvancedView = ({ manager }) => {
                                     className={`flex-1 py-4 rounded-2xl font-black font-mono transition-all active:scale-90 border ${
                                         currentLimit === amps
                                             ? 'bg-cyan-500 border-cyan-400 text-white shadow-[0_0_20px_rgba(6,182,212,0.4)]'
-                                            : 'bg-white/5 border-white/5 text-gray-500 hover:bg-white/10'
+                                            : 'bg-white/5 border-white/5 text-gray-300 hover:bg-white/10'
                                     }`}
                                 >
                                     {amps}A
@@ -120,7 +120,7 @@ const AdvancedView = ({ manager }) => {
                             </div>
                             <div className="flex flex-col">
                                 <span className="text-sm font-black text-white uppercase tracking-tight">Safe Power Mode</span>
-                                <span className="text-[9px] font-bold text-gray-500 uppercase">Configurazione automatica carichi</span>
+                                <span className="text-[9px] font-bold text-gray-300 uppercase">Configurazione automatica carichi</span>
                             </div>
                         </div>
                         <div className="w-10 h-5 bg-gray-900 rounded-full border border-white/5"></div>
