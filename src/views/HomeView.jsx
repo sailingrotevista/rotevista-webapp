@@ -354,26 +354,40 @@ const HomeView = ({ manager, onTabChange }) => {
                 </div>
             </div>
 
-            {/* --- SEZIONE 4: MAPPA SATELLITARE --- */}
-            <div className="space-y-2 pb-22 flex flex-col items-center">
+            {/* --- SEZIONE 4: MAPPA SATELLITARE CON STRUTTURA COCKPIT NAUTICO --- */}
+            <div className="space-y-3 pb-22 flex flex-col items-center w-full">
                 {!isMapFull && (
-                    <div className="flex justify-between items-center w-[80%] px-2 text-white">
-                        <h3 className="text-[10px] font-black text-gray-300 tracking-widest uppercase font-mono opacity-50"></h3>{/* prima di h3 era Posizione GPS ora dovrebbe avere un altro nome */}
+                    <div className="w-[80%] bg-[#121212]/90 backdrop-blur-xl border border-white/10 p-4 rounded-[2rem] shadow-2xl flex flex-col gap-2.5 text-white">
                         
-                        {/* Status Ancora Informativo Completo (Ordinato, Cliccabile e Compatibile Safari) */}
-                        <div className="flex items-center gap-2">
+                        {/* RIGA 1: Stato dell'Ancoraggio e Coordinate Nautiche */}
+                        <div className="flex justify-between items-center w-full">
+                            <div className="flex items-center gap-2">
+                                <Anchor
+                                    size={14}
+                                    className={`${
+                                        data?.anchor?.status === 'LOCKED' ? 'text-cyan-400' :
+                                        (data?.anchor?.status === 'DRAGGING' || data?.anchor?.status === 'DRIFTING') ? 'text-red-500 animate-pulse' :
+                                        (data?.anchor?.status === 'LEARNING' || data?.anchor?.status === 'SETTLING') ? 'text-yellow-400 animate-spin-slow' : 'text-green-400'
+                                    }`}
+                                />
+                                <span className="text-[11px] font-black uppercase tracking-widest text-white font-mono leading-none">
+                                    {data?.anchor?.description || "In Navigazione"}
+                                </span>
+                            </div>
+
+                            {/* Coordinate Nautiche con Copia rapida in Appunti */}
                             <span
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     if (!data?.anchor?.status) return;
                                     
-                                    // Genera una stringa pulita e intelligente in base allo stato attivo
-                                    const isArmed = (data.anchor.status === 'LOCKED' || data.anchor.status === 'DRAGGING' || data.anchor.status === 'DRIFTING');
+                                    const isArmed = (data.anchor.status === 'LOCKED' || data.anchor.status === 'DRAGGING' || data.anchor.status === 'DRIFTING' || data.anchor.status === 'LEARNING');
+                                    
+                                    // Genera una stringa diagnostica ultra-completa per le analisi in chat
                                     const textToCopy = isArmed
-                                        ? `⛵ ROTEVISTA: [${data.anchor.description || data.anchor.status}] | D: ${data.anchor.drift.toFixed(1)}m | ${formatNautic(data.anchor.lat, true)} ${formatNautic(data.anchor.lon, false)} | R: ${data.anchor.radius.toFixed(0)}m`
+                                        ? `⛵ ROTEVISTA: [${data.anchor.description || data.anchor.status}] | D: ${data.anchor.boat_dist?.toFixed(1) || '0.0'}m | ${formatNautic(data.anchor.lat, true)} ${formatNautic(data.anchor.lon, false)} | R: ${data.anchor.radius?.toFixed(0) || '0'}m | Prec: ±${data.anchor.std_dev?.toFixed(1) || '0.0'}m | Fondale: ${data.anchor.depth?.toFixed(1) || '0.0'}m | Catena: ${data.anchor.chain?.toFixed(0) || '0'}m | Volvo: ${data.anchor.engine_on ? 'ON' : 'OFF'} (${data.anchor.engine_v?.toFixed(1) || '0.0'}V)${data.anchor.score > 0 ? ` [Score: ${data.anchor.score}/70]` : ''}`
                                         : `⛵ ROTEVISTA: ${data.anchor.description || data.anchor.status}`;
                                     
-                                    // --- LOGICA DI COPIA COMPATIBILE SAFARI / HTTP (LOCAL BOAT NETWORK) ---
                                     if (navigator.clipboard && window.isSecureContext) {
                                         navigator.clipboard.writeText(textToCopy).then(() => {
                                             setIsCopied(true);
@@ -387,69 +401,74 @@ const HomeView = ({ manager, onTabChange }) => {
                                         document.body.appendChild(textArea);
                                         textArea.focus();
                                         textArea.select();
-                                        try {
-                                            document.execCommand('copy');
-                                            setIsCopied(true);
-                                            setTimeout(() => setIsCopied(false), 2000);
-                                        } catch (err) {
-                                            console.error("Errore copia fallback:", err);
-                                        }
+                                        document.execCommand('copy');
+                                        setIsCopied(true);
+                                        setTimeout(() => setIsCopied(false), 2000);
                                         document.body.removeChild(textArea);
                                     }
                                 }}
-                                className={`text-[9px] font-black px-3 py-1 rounded-full border flex items-center gap-2 uppercase transition-all duration-300 cursor-pointer active:scale-95 shadow-md ${
-                                    isCopied
-                                        ? 'bg-green-500/20 text-green-400 border-green-500/40'
-                                        : data?.anchor?.status === 'LOCKED'
-                                            ? 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30 hover:bg-cyan-500/20'
-                                            : (data?.anchor?.status === 'MOVING' || data?.anchor?.status === 'IN_PORTO')
-                                                ? 'bg-green-500/15 text-green-400 border-green-500/30 hover:bg-green-500/20' // Verde per stati stabili di sicurezza
-                                                : (data?.anchor?.status === 'DRAGGING' || data?.anchor?.status === 'DRIFTING')
-                                                    ? 'bg-red-500/20 text-red-500 border-red-500/40 animate-pulse'
-                                                    : 'bg-yellow-500/15 text-yellow-500 border-yellow-500/30 hover:bg-yellow-500/20' // Giallo/Arancione solo per transitori (Learning/Settling)
+                                className={`text-[10px] font-mono tracking-tight cursor-pointer transition-colors duration-200 uppercase font-black ${
+                                    isCopied ? 'text-green-400' : 'text-gray-400 hover:text-white'
                                 }`}
                             >
-                                <Anchor size={10} className={data?.anchor?.status === 'LOCKED' ? "" : "animate-spin-slow"} />
-                                
-                                {isCopied ? (
-                                    <span className="font-mono text-[8px] text-green-400 tracking-wider">✓ COPIATO IN APPUNTI</span>
-                                ) : data?.anchor?.status ? (
-                                    <div className="flex items-center gap-2 divide-x divide-white/10">
-                                        {/* 1. STATO DINAMICO / DESCRIZIONE DI DETTAGLIO */}
-                                        <span className="pr-1 text-white">
-                                            {data.anchor.description || data.anchor.status}
-                                        </span>
-                                        
-                                        {/* Mostra le metriche fisiche solo se l'ancora è armata o attiva (LOCKED, DRAGGING, DRIFTING) */}
-                                        {(data.anchor.status === 'LOCKED' || data.anchor.status === 'DRAGGING' || data.anchor.status === 'DRIFTING') && (
-                                            <>
-                                                {/* 2. DRIFT (Spostato in seconda posizione per priorità) */}
-                                                <span className={`pl-2 ${data.anchor.drift > 5 ? 'text-red-400 font-bold animate-pulse' : 'opacity-90'}`}>
-                                                    D: {data.anchor.drift.toFixed(1)}m
-                                                </span>
-                                                
-                                                {/* 3. COORDINATE NAUTICHE */}
-                                                <span className="pl-2 opacity-85 font-mono tracking-tight text-gray-200">
-                                                    {formatNautic(data.anchor.lat, true)} {formatNautic(data.anchor.lon, false)}
-                                                </span>
-                                                
-                                                {/* 4. RAGGIO (Catena) */}
-                                                <span className="pl-2 opacity-70">R: {data.anchor.radius.toFixed(0)}m</span>
-                                            </>
-                                        )}
-                                        
-                                        {/* Mostra la confidenza (o il progresso) sempre, escludendo la navigazione libera e l'assestamento iniziale */}
-                                        {data.anchor.status !== 'MOVING' && data.anchor.status !== 'SETTLING' && (
-                                            <span className="pl-2 opacity-50 text-[8px]">
-                                                {data.anchor.status === 'LEARNING' ? 'PROG.' : 'C'}: {Math.round(data.anchor.confidence)}%
-                                            </span>
-                                        )}
-                                    </div>
-                                ) : (
-                                    <span>NAVIGAZIONE</span>
-                                )}
+                                {isCopied ? "✓ Copiato" : data?.anchor?.lat ? `${formatNautic(data.anchor.lat, true)} ${formatNautic(data.anchor.lon, false)}` : "---"}
                             </span>
                         </div>
+
+                        {/* RIGA 2: Griglia delle Distanze di Sicurezza (Attiva solo in rada) */}
+                        {data?.anchor?.status && data?.anchor?.status !== 'MOVING' && (
+                            <div className="grid grid-cols-3 gap-2 py-2 border-t border-b border-white/5 text-center bg-white/[0.01] rounded-2xl">
+                                <div className="flex flex-col">
+                                    <span className="text-[7.5px] font-black uppercase text-gray-400 tracking-wider">Distanza</span>
+                                    <span className="text-sm font-black text-cyan-400 font-mono mt-0.5">
+                                        {data.anchor.boat_dist?.toFixed(1) || '0.0'}<span className="text-[10px] font-bold text-gray-400 ml-0.5">m</span>
+                                    </span>
+                                </div>
+                                <div className="flex flex-col border-l border-r border-white/5">
+                                    <span className="text-[7.5px] font-black uppercase text-gray-400 tracking-wider">Raggio Guardia</span>
+                                    <span className="text-sm font-black text-white font-mono mt-0.5">
+                                        {data.anchor.radius?.toFixed(0) || '0'}<span className="text-[10px] font-bold text-gray-400 ml-0.5">m</span>
+                                    </span>
+                                </div>
+                                <div className="flex flex-col font-mono">
+                                    <span className="text-[7.5px] font-black uppercase text-gray-400 tracking-wider">Precisione</span>
+                                    <span className="text-sm font-black text-cyan-400 mt-0.5">
+                                        {data.anchor.std_dev > 0 ? `±${data.anchor.std_dev.toFixed(1)}m` : '±0.0m'}
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* RIGA 3: Informazioni Ambientali, Volvo e Note di Bassa Fiducia */}
+                        <div className="flex justify-between items-center text-[10px] font-bold text-gray-300 font-mono leading-none">
+                            {/* Dati Fisici del fondale (Fondale & Catena) */}
+                            <div className="flex gap-4">
+                                {data?.anchor?.depth > 0 && (
+                                    <span>Fondale: <span className="text-white font-black">{data.anchor.depth.toFixed(1)}m</span></span>
+                                )}
+                                {data?.anchor?.chain > 0 && (
+                                    <span>Catena: <span className="text-white font-black">{data.anchor.chain.toFixed(0)}m</span></span>
+                                )}
+                            </div>
+
+                            {/* Integrazione Dinamica Allarmi/Volvo Engine/Bassa Fiducia */}
+                            <div className="flex items-center">
+                                {data?.anchor?.engine_on ? (
+                                    <span className="text-yellow-400 font-black animate-pulse flex items-center gap-1">
+                                        ⚡ Volvo: {data.anchor.engine_v?.toFixed(1)}V {data.anchor.score > 0 ? `[Salpamento: ${data.anchor.score}/70]` : ''}
+                                    </span>
+                                ) : (
+                                    data?.anchor?.status === 'LEARNING' && data?.anchor?.low_conf_reason ? (
+                                        <span className="text-orange-400 font-black tracking-tight">Nota: {data.anchor.low_conf_reason}</span>
+                                    ) : (
+                                        data?.anchor?.status === 'LOCKED' && (
+                                            <span className="text-gray-400">Fiducia: <span className="text-green-400 font-black uppercase">Ottima</span></span>
+                                        )
+                                    )
+                                )}
+                            </div>
+                        </div>
+
                     </div>
                 )}
 
