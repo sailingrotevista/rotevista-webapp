@@ -420,20 +420,28 @@ const HomeView = ({ manager, onTabChange }) => {
                             <div className="grid grid-cols-3 gap-2 py-2 border-t border-b border-white/5 text-center bg-white/[0.01] rounded-2xl">
                                 <div className="flex flex-col">
                                     <span className="text-[7.5px] font-black uppercase text-gray-400 tracking-wider">Distanza</span>
-                                    <span className="text-sm font-black text-cyan-400 font-mono mt-0.5">
+                                    <span className={`text-sm font-black font-mono mt-0.5 ${
+                                        (data.anchor.status === 'LEARNING' || data.anchor.status === 'SETTLING') ? 'text-orange-500' : 'text-cyan-400'
+                                    }`}>
                                         {data.anchor.boat_dist?.toFixed(1) || '0.0'}<span className="text-[10px] font-bold text-gray-400 ml-0.5">m</span>
                                     </span>
                                 </div>
                                 <div className="flex flex-col border-l border-r border-white/5">
                                     <span className="text-[7.5px] font-black uppercase text-gray-400 tracking-wider">Raggio Guardia</span>
-                                    <span className="text-sm font-black text-white font-mono mt-0.5">
+                                    <span className={`text-sm font-black font-mono mt-0.5 ${
+                                        (data.anchor.status === 'LEARNING' || data.anchor.status === 'SETTLING') ? 'text-orange-500' : 'text-white'
+                                    }`}>
                                         {data.anchor.radius?.toFixed(0) || '0'}<span className="text-[10px] font-bold text-gray-400 ml-0.5">m</span>
                                     </span>
                                 </div>
                                 <div className="flex flex-col font-mono">
                                     <span className="text-[7.5px] font-black uppercase text-gray-400 tracking-wider">Precisione</span>
-                                    <span className="text-sm font-black text-cyan-400 mt-0.5">
-                                        {data.anchor.std_dev > 0 ? `±${data.anchor.std_dev.toFixed(1)}m` : '±0.0m'}
+                                    <span className={`text-sm font-black mt-0.5 ${
+                                        (data.anchor.status === 'LEARNING' || data.anchor.status === 'SETTLING') ? 'text-orange-400' : 'text-cyan-400'
+                                    }`}>
+                                        {(data.anchor.status === 'LEARNING' || data.anchor.status === 'SETTLING')
+                                            ? 'Calcolo...'
+                                            : (data.anchor.std_dev > 0 ? `±${data.anchor.std_dev.toFixed(1)}m` : '±0.0m')}
                                     </span>
                                 </div>
                             </div>
@@ -501,12 +509,28 @@ const HomeView = ({ manager, onTabChange }) => {
                             setIsMapFull={setIsMapFull}
                         />
 
-                        {/* CERCHIO DI SICUREZZA (Visibile solo se lo stato è LOCKED o in ALLARME) */}
+                        {/* CERCHIO DI SICUREZZA PROVVISORIO (Arancione, visibile in fase di LEARNING o SETTLING) */}
+                        {data?.anchor?.lat && data?.anchor?.lon && data.anchor.radius > 0 &&
+                         (data.anchor.status === 'LEARNING' || data.anchor.status === 'SETTLING') && (
+                            <Circle
+                                center={[data.anchor.lat, data.anchor.lon]}
+                                radius={data.anchor.radius}
+                                pathOptions={{
+                                    color: '#f97316', // Arancione vivido per indicare l'assestamento/apprendimento
+                                    fillOpacity: 0,
+                                    weight: 1.5,
+                                    dashArray: '6, 10', // Tratteggio differente per distinguerlo dalla guardia attiva
+                                    interactive: false
+                                }}
+                            />
+                        )}
+
+                        {/* CERCHIO DI SICUREZZA DEFINITIVO (Cyan/Rosso, visibile in LOCKED, DRAGGING o DRIFTING) */}
                         {data?.anchor?.lat && data?.anchor?.lon && data.anchor.radius > 0 &&
                          (data.anchor.status === 'LOCKED' || data.anchor.status === 'DRAGGING' || data.anchor.status === 'DRIFTING') && (
                             <Circle
                                 center={[data.anchor.lat, data.anchor.lon]}
-                                radius={data.anchor.radius + 15}
+                                radius={data.anchor.radius + Math.max(15, data.anchor.radius * 0.30)} // Allineato al metro con la soglia allarme reale
                                 pathOptions={{
                                     color: (data.anchor.status === 'DRAGGING' || data.anchor.status === 'DRIFTING') ? '#ef4444' : '#22d3ee',
                                     fillOpacity: 0,
@@ -517,8 +541,9 @@ const HomeView = ({ manager, onTabChange }) => {
                             />
                         )}
 
-                        {/* MARKER POSIZIONE PREVISTA ANCORA (Sempre visibile se calcolata) */}
-                        {data?.anchor?.lat && data?.anchor?.lon && (
+                        {/* MARKER POSIZIONE PREVISTA ANCORA (Nascosto in LEARNING/SETTLING per evitare confusione visiva) */}
+                        {data?.anchor?.lat && data?.anchor?.lon &&
+                         data.anchor.status !== 'LEARNING' && data.anchor.status !== 'SETTLING' && data.anchor.status !== 'MOVING' && (
                             <Marker
                                 position={[data.anchor.lat, data.anchor.lon]}
                                 icon={anchorMarkerIcon}
