@@ -74,31 +74,31 @@ const stationaryVesselIcon = (risk) => {
     });
 };
 
-/** Icona testuale trasparente ad alto contrasto - Disposta a due righe con font ingrandito (9px / 7.5px) */
+/** Icona testuale trasparente ad alto contrasto - Disposta a due righe con font ingrandito (11px / 9px) */
 const stationaryVesselLabelIcon = (name, risk, riskMsg, dist) => {
     let color = "rgba(225, 225, 225, 0.85)"; // Grigio di default
     let extraTxt = "";
 
     if (risk === "RED") {
         color = "#ef4444";
-        extraTxt = `${riskMsg} - ${dist}m`;
+        extraTxt = `(${riskMsg} - ${dist}m)`;
     } else if (risk === "ORANGE") {
         color = "#f97316";
-        extraTxt = `${riskMsg} - ${dist}m`;
+        extraTxt = `(${riskMsg} - ${dist}m)`;
     } else if (dist <= 200) {
-        extraTxt = `${dist}m`; // Mostra la distanza pulita sotto i 200 metri per il test
+        extraTxt = `(${dist}m)`; // Mostra la distanza pulita sotto i 200 metri per il test
     }
 
     return new L.DivIcon({
         html: `
             <div style="display: flex; flex-direction: column; align-items: flex-start; justify-content: center; line-height: 1.15; white-space: nowrap; text-transform: uppercase;">
-                <span style="font-size: 9px; font-weight: 900; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;">${name}</span>
-                ${extraTxt ? `<span style="font-size: 7.5px; font-weight: 900; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; margin-top: 1px;">(${extraTxt})</span>` : ""}
+                <span style="font-size: 11px; font-weight: 900; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;">${name}</span>
+                ${extraTxt ? `<span style="font-size: 9px; font-weight: 900; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; margin-top: 1px;">(${extraTxt})</span>` : ""}
             </div>
         `,
         className: 'ais-vessel-label',
-        iconSize: [260, 24], // Larghezza a 260px e altezza a 24px per accogliere i font più grandi
-        iconAnchor: [-7, 12] // Allineato perfettamente sul baricentro del punto da 8.5px
+        iconSize: [300, 32], // Modificato: aumentato a 300x32 per ospitare font più grandi senza clipping
+        iconAnchor: [-7, 16] // Modificato: spostato verticalmente a 16px per centrare rispetto al container da 32px
     });
 };
 
@@ -112,6 +112,35 @@ const movingVesselIcon = (cog, risk) => {
         className: 'moving-vessel-marker',
         iconSize: [16, 16],
         iconAnchor: [8, 8]
+    });
+};
+
+/** Icona testuale per bersagli in movimento con font ingrandito (11px / 9px) e indicatore di rotta sicura */
+const movingVesselLabelIcon = (name, sog, cpa, tcpa, crossDir, risk) => {
+    let mainColor = risk === "RED" ? "#ef4444" : "rgba(225, 225, 225, 0.85)";
+    let cpaColor = risk === "RED" ? "#ef4444" : "#f97316";
+    let subTxt = "";
+
+    if (tcpa !== null) {
+        if (tcpa < 0) {
+            subTxt = "✅"; // Solo un tick per rotte sicure in transito/allontanamento
+            // Usa il verde brillante per rassicurare visivamente, pur mantenendo l'ombra nera di contrasto
+            cpaColor = "#22c55e";
+        } else {
+            subTxt = `CPA: ${cpa}m (${crossDir}) IN ${Math.round(tcpa)} MIN`;
+        }
+    }
+
+    return new L.DivIcon({
+        html: `
+            <div style="display: flex; flex-direction: column; align-items: flex-start; justify-content: center; line-height: 1.15; white-space: nowrap; text-transform: uppercase;">
+                <span style="font-size: 11px; font-weight: 900; color: ${mainColor}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;">${name} (${sog} kn)</span>
+                ${subTxt ? `<span style="font-size: 9px; font-weight: 900; color: ${cpaColor}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; margin-top: 1px;">${subTxt}</span>` : ""}
+            </div>
+        `,
+        className: 'ais-moving-label',
+        iconSize: [300, 32],
+        iconAnchor: [-10, 16]
     });
 };
 
@@ -697,6 +726,12 @@ const HomeView = ({ manager, onTabChange }) => {
                                         <Marker
                                             position={[v.lat, v.lon]}
                                             icon={movingVesselIcon(v.cog, v.risk)}
+                                            interactive={false}
+                                        />
+                                        {/* Etichetta ARPA con Nome, Velocità, CPA e Incrocio */}
+                                        <Marker
+                                            position={[v.lat, v.lon]}
+                                            icon={movingVesselLabelIcon(v.name, v.sog, v.cpa, v.tcpa, v.crossDir, v.risk)}
                                             interactive={false}
                                         />
                                     </React.Fragment>
