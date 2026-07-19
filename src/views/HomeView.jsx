@@ -359,61 +359,63 @@ const HomeView = ({ manager, onTabChange }) => {
                 {!isMapFull && (
                     <div className="w-[80%] bg-[#121212]/90 backdrop-blur-xl border border-white/10 p-4 rounded-[2rem] shadow-2xl flex flex-col gap-2.5 text-white">
                         
-                        {/* RIGA 1: Stato dell'Ancoraggio e Coordinate Nautiche */}
-                        <div className="flex justify-between items-center w-full">
-                            <div className="flex items-center gap-2">
-                                <Anchor
-                                    size={14}
-                                    className={`${
-                                        data?.anchor?.status === 'LOCKED' ? 'text-cyan-400' :
-                                        (data?.anchor?.status === 'DRAGGING' || data?.anchor?.status === 'DRIFTING') ? 'text-red-500 animate-pulse' :
-                                        (data?.anchor?.status === 'LEARNING' || data?.anchor?.status === 'SETTLING') ? 'text-yellow-400 animate-spin-slow' : 'text-green-400'
-                                    }`}
-                                />
-                                <span className="text-[11px] font-black uppercase tracking-widest text-white font-mono leading-none">
-                                    {data?.anchor?.description || "In Navigazione"}
-                                </span>
-                            </div>
-
-                            {/* Coordinate Nautiche con Copia rapida in Appunti */}
-                            <span
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (!data?.anchor?.status) return;
-                                    
-                                    const isArmed = (data.anchor.status === 'LOCKED' || data.anchor.status === 'DRAGGING' || data.anchor.status === 'DRIFTING' || data.anchor.status === 'LEARNING');
-                                    
-                                    // Genera una stringa diagnostica ultra-completa per le analisi in chat
-                                    const textToCopy = isArmed
-                                        ? `⛵ ROTEVISTA: [${data.anchor.description || data.anchor.status}] | D: ${data.anchor.boat_dist?.toFixed(1) || '0.0'}m | ${formatNautic(data.anchor.lat, true)} ${formatNautic(data.anchor.lon, false)} | R: ${data.anchor.radius?.toFixed(0) || '0'}m | Prec: ±${data.anchor.std_dev?.toFixed(1) || '0.0'}m | Fondale: ${data.anchor.depth?.toFixed(1) || '0.0'}m | Catena: ${data.anchor.chain?.toFixed(0) || '0'}m | Volvo: ${data.anchor.engine_on ? 'ON' : 'OFF'} (${data.anchor.engine_v?.toFixed(1) || '0.0'}V)${data.anchor.score > 0 ? ` [Score: ${data.anchor.score}/70]` : ''}`
-                                        : `⛵ ROTEVISTA: ${data.anchor.description || data.anchor.status}`;
-                                    
-                                    if (navigator.clipboard && window.isSecureContext) {
-                                        navigator.clipboard.writeText(textToCopy).then(() => {
-                                            setIsCopied(true);
-                                            setTimeout(() => setIsCopied(false), 2000);
-                                        });
-                                    } else {
-                                        const textArea = document.createElement("textarea");
-                                        textArea.value = textToCopy;
-                                        textArea.style.position = "fixed";
-                                        textArea.style.opacity = "0";
-                                        document.body.appendChild(textArea);
-                                        textArea.focus();
-                                        textArea.select();
-                                        document.execCommand('copy');
-                                        setIsCopied(true);
-                                        setTimeout(() => setIsCopied(false), 2000);
-                                        document.body.removeChild(textArea);
-                                    }
-                                }}
-                                className={`text-[10px] font-mono tracking-tight cursor-pointer transition-colors duration-200 uppercase font-black ${
-                                    isCopied ? 'text-green-400' : 'text-gray-400 hover:text-white'
+                        {/* RIGA 1: Stato dell'Ancoraggio (Intera Larghezza) */}
+                        <div className="flex items-center gap-2 w-full">
+                            <Anchor
+                                size={14}
+                                className={`${
+                                    data?.anchor?.status === 'LOCKED' ? 'text-cyan-400' :
+                                    (data?.anchor?.status === 'DRAGGING' || data?.anchor?.status === 'DRIFTING') ? 'text-red-500 animate-pulse' :
+                                    (data?.anchor?.status === 'LEARNING' || data?.anchor?.status === 'SETTLING') ? 'text-yellow-400 animate-spin-slow' : 'text-green-400'
                                 }`}
-                            >
-                                {isCopied ? "✓ Copiato" : data?.anchor?.lat ? `${formatNautic(data.anchor.lat, true)} ${formatNautic(data.anchor.lon, false)}` : "---"}
+                            />
+                            <span className="text-[11px] font-black uppercase tracking-widest text-white font-mono leading-none whitespace-nowrap">
+                                {data?.anchor?.description || "In Navigazione"}
                             </span>
                         </div>
+
+                        {/* RIGA 1B: Coordinate Nautiche con riga dedicata (visibile solo se all'ancora) */}
+                        {data?.anchor?.lat && (
+                            <div className="w-full flex items-center justify-between mt-0.5 border-b border-white/5 pb-2">
+                                <span
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (!data?.anchor?.status) return;
+                                        
+                                        const isArmed = (data.anchor.status === 'LOCKED' || data.anchor.status === 'DRAGGING' || data.anchor.status === 'DRIFTING' || data.anchor.status === 'LEARNING');
+                                        
+                                        // Genera una stringa diagnostica ultra-completa per le analisi in chat
+                                        const textToCopy = isArmed
+                                            ? `⛵ ROTEVISTA: [${data.anchor.description || data.anchor.status}] | D: ${data.anchor.boat_dist?.toFixed(1) || '0.0'}m | ${formatNautic(data.anchor.lat, true)} ${formatNautic(data.anchor.lon, false)} | R: ${data.anchor.radius?.toFixed(0) || '0'}m | Prec: ±${data.anchor.std_dev?.toFixed(1) || '0.0'}m | Fondale: ${data.anchor.depth?.toFixed(1) || '0.0'}m | Catena: ${data.anchor.chain?.toFixed(0) || '0'}m | Volvo: ${data.anchor.engine_on ? 'ON' : 'OFF'} (${data.anchor.engine_v?.toFixed(1) || '0.0'}V)${data.anchor.score > 0 ? ` [Score: ${data.anchor.score}/70]` : ''}`
+                                            : `⛵ ROTEVISTA: ${data.anchor.description || data.anchor.status}`;
+                                        
+                                        if (navigator.clipboard && window.isSecureContext) {
+                                            navigator.clipboard.writeText(textToCopy).then(() => {
+                                                setIsCopied(true);
+                                                setTimeout(() => setIsCopied(false), 2000);
+                                            });
+                                        } else {
+                                            const textArea = document.createElement("textarea");
+                                            textArea.value = textToCopy;
+                                            textArea.style.position = "fixed";
+                                            textArea.style.opacity = "0";
+                                            document.body.appendChild(textArea);
+                                            textArea.focus();
+                                            textArea.select();
+                                            document.execCommand('copy');
+                                            setIsCopied(true);
+                                            setTimeout(() => setIsCopied(false), 2000);
+                                            document.body.removeChild(textArea);
+                                        }
+                                    }}
+                                    className={`text-[10px] font-mono tracking-tight cursor-pointer transition-colors duration-200 uppercase font-black leading-none ${
+                                        isCopied ? 'text-green-400 animate-pulse' : 'text-gray-400 hover:text-white'
+                                    }`}
+                                >
+                                    {isCopied ? "✓ Copiato in appunti" : `📌 Posiz: ${formatNautic(data.anchor.lat, true)}   ${formatNautic(data.anchor.lon, false)}`}
+                                </span>
+                            </div>
+                        )}
 
                         {/* RIGA 2: Griglia delle Distanze di Sicurezza (Attiva solo in rada) */}
                         {data?.anchor?.status && data?.anchor?.status !== 'MOVING' && (
