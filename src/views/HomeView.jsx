@@ -19,9 +19,18 @@ const boatIcon = new L.DivIcon({
     iconAnchor: [15, 15]
 });
 
-const anchorMarkerIcon = new L.DivIcon({
-    html: `<div style="font-size: 18px; filter: drop-shadow(0 0 3px black);">⚓</div>`,
+/** Generatore dell'icona dell'ancora propria (passa a rosso brillante in caso di pericolo incrocio, con forzatura testuale per iOS) */
+const myAnchorMarkerIcon = (isThreatened) => new L.DivIcon({
+    html: `<div style="font-size: 18px; color: ${isThreatened ? '#ef4444' : 'rgba(255, 255, 255, 0.85)'}; filter: drop-shadow(0 0 3px black); transition: color 0.5s ease-in-out;">⚓&#xFE0E;</div>`,
     className: 'anchor-marker',
+    iconSize: [20, 20],
+    iconAnchor: [10, 10]
+});
+
+/** Icona dell'ancora sommersa del vicino (disegnata in rosso, più grande e con lampeggio ad impulsi di Tailwind) */
+const nearbyVesselAnchorIcon = new L.DivIcon({
+    html: `<div style="font-size: 18px; color: #ef4444; filter: drop-shadow(0 0 3px black);">⚓&#xFE0E;</div>`,
+    className: 'nearby-anchor-marker animate-pulse', // Lampeggio pulsante fluido di Tailwind
     iconSize: [20, 20],
     iconAnchor: [10, 10]
 });
@@ -34,6 +43,77 @@ const formatNautic = (val, isLat) => {
         const min = ((absVal - deg) * 60).toFixed(4);
         return `${deg} ${min}${hemi}`;
     };
+
+/** Calcola la coordinata Ovest (270°) esatta sul bordo del cerchio per posizionare le etichette */
+const getWestLabelCoords = (center, radius) => {
+    const d2r = Math.PI / 180;
+    const dLon = -radius / (111139 * Math.cos(center.lat * d2r));
+    return [center.lat, center.lon + dLon];
+};
+
+/** Calcola la coordinata di proiezione futura a 15 minuti basandosi su COG e SOG */
+const getVectorCoords = (lat, lon, cog, sog) => {
+    const d2r = Math.PI / 180;
+    const distance = sog * 463; // Metri percorsi in 15 minuti (sog * 1852 * 0.25)
+    const projectedLat = lat + (distance * Math.cos(cog * d2r)) / 111139;
+    const projectedLon = lon + (distance * Math.sin(cog * d2r)) / (111139 * Math.cos(lat * d2r));
+    return [projectedLat, projectedLon];
+};
+
+/** Icona del puntino per le barche all'ancora (proporzionata "un filo più grande" delle scritte) con colore in base al rischio */
+const stationaryVesselIcon = (risk) => {
+    let color = "rgba(225, 225, 225, 0.85)"; // Grigio di default
+    if (risk === "RED") color = "#ef4444"; // Rosso allarme
+    else if (risk === "ORANGE") color = "#f97316"; // Arancione allineamento/swing
+    
+    return new L.DivIcon({
+        html: `<div style="width: 8px; height: 8px; background-color: ${color}; border-radius: 50%; border: 1.2px solid rgba(0, 0, 0, 0.6); box-shadow: 0 0 3px rgba(0,0,0,0.5);"></div>`,
+        className: 'stationary-vessel-marker',
+        iconSize: [8, 8],
+        iconAnchor: [4, 4]
+    });
+};
+
+/** Icona testuale trasparente ad alto contrasto - Disposta a due righe con font ingrandito (9px / 7.5px) */
+const stationaryVesselLabelIcon = (name, risk, riskMsg, dist) => {
+    let color = "rgba(225, 225, 225, 0.85)"; // Grigio di default
+    let extraTxt = "";
+
+    if (risk === "RED") {
+        color = "#ef4444";
+        extraTxt = `${riskMsg} - ${dist}m`;
+    } else if (risk === "ORANGE") {
+        color = "#f97316";
+        extraTxt = `${riskMsg} - ${dist}m`;
+    } else if (dist <= 200) {
+        extraTxt = `${dist}m`; // Mostra la distanza pulita sotto i 200 metri per il test
+    }
+
+    return new L.DivIcon({
+        html: `
+            <div style="display: flex; flex-direction: column; align-items: flex-start; justify-content: center; line-height: 1.15; white-space: nowrap; text-transform: uppercase;">
+                <span style="font-size: 9px; font-weight: 900; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;">${name}</span>
+                ${extraTxt ? `<span style="font-size: 7.5px; font-weight: 900; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; margin-top: 1px;">(${extraTxt})</span>` : ""}
+            </div>
+        `,
+        className: 'ais-vessel-label',
+        iconSize: [260, 24], // Larghezza a 260px e altezza a 24px per accogliere i font più grandi
+        iconAnchor: [-7, 12] // Allineato perfettamente sul baricentro del punto da 8.5px
+    });
+};
+
+/** Icona del triangolo ambra per le barche in movimento (sog >= 1.5 kn) con colore in base al rischio */
+const movingVesselIcon = (cog, risk) => {
+    let color = "#f97316"; // Ambra di default
+    if (risk === "RED") color = "#ef4444";
+
+    return new L.DivIcon({
+        html: `<div style="transform: rotate(${cog}deg); font-size: 11px; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">▲</div>`,
+        className: 'moving-vessel-marker',
+        iconSize: [16, 16],
+        iconAnchor: [8, 8]
+    });
+};
 
 // ============================================================
 // 2. LOGICHE COLORE DINAMICO
@@ -240,6 +320,22 @@ const HomeView = ({ manager, onTabChange }) => {
     const lat = parseFloat(data?.gps?.lat) || 36.78;
     const lon = parseFloat(data?.gps?.lon) || 14.54;
     const coords = [lat, lon];
+
+    /** Calcola il centro dinamico per gli anelli di distanza (Ancora o Barca) */
+    const rangeRingsCenter = useMemo(() => {
+        const isAnchored = data?.anchor?.status && data.anchor.status !== 'MOVING';
+        if (isAnchored && data?.anchor?.lat && data?.anchor?.lon) {
+            return { lat: parseFloat(data.anchor.lat), lon: parseFloat(data.anchor.lon) };
+        }
+        return { lat: lat, lon: lon };
+    }, [data?.anchor?.status, data?.anchor?.lat, data?.anchor?.lon, lat, lon]);
+
+    /** Scansiona i bersagli AIS per capire se un vicino sta galleggiando sopra la nostra ancora */
+    const isMyAnchorThreatened = useMemo(() => {
+        return (data?.environment?.ais_targets || []).some(
+            v => v.risk === "RED" && v.riskMsg === "SOPRA TUA ANCORA!"
+        );
+    }, [data?.environment?.ais_targets]);
 
     // --- ALGORITMO DI SMOOTHING CATMULL-ROM PER LA TRACCIA GPS ---
     const smoothedTrail = useMemo(() => {
@@ -472,7 +568,7 @@ const HomeView = ({ manager, onTabChange }) => {
                                         <span className="text-orange-400 font-black tracking-tight">Nota: {data.anchor.low_conf_reason}</span>
                                     ) : (
                                         data?.anchor?.status === 'LOCKED' && (
-                                            <span className="text-gray-400">Fiducia: <span className="text-green-400 font-black uppercase">Ottima</span></span>
+                                            <span className="text-green-400 font-black uppercase">Ottima</span>
                                         )
                                     )
                                 )}
@@ -543,12 +639,124 @@ const HomeView = ({ manager, onTabChange }) => {
                             />
                         )}
 
-                        {/* MARKER POSIZIONE PREVISTA ANCORA (Nascosto in LEARNING/SETTLING per evitare confusione visiva) */}
+                        {/* RANGE RINGS STRATEGICI (100m, 200m, 300m) CON ETICHETTE ALLINEATE A OVEST */}
+                        {[100, 200, 300].map((radius) => {
+                            const labelPos = getWestLabelCoords(rangeRingsCenter, radius);
+                            const labelText = `${radius}m`;
+
+                            return (
+                                <React.Fragment key={`ring-${radius}`}>
+                                    {/* Cerchio di distanza bianco e ben visibile */}
+                                    <Circle
+                                        center={[rangeRingsCenter.lat, rangeRingsCenter.lon]}
+                                        radius={radius}
+                                        pathOptions={{
+                                            color: '#ffffff',
+                                            weight: 1.0,
+                                            opacity: 0.55,
+                                            fillOpacity: 0,
+                                            dashArray: '4, 12',
+                                            interactive: false
+                                        }}
+                                    />
+                                    {/* Etichetta testuale ad alto contrasto (Halo/Outline nera per massima leggibilità su ogni sfondo) */}
+                                    <Marker
+                                        position={labelPos}
+                                        icon={new L.DivIcon({
+                                            html: `<div style="font-size: 8px; font-weight: 900; color: rgba(255, 255, 255, 0.90); font-family: monospace; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; white-space: nowrap; text-align: right; width: 100%;">${labelText}</div>`,
+                                            className: 'range-label-marker',
+                                            iconSize: [40, 10],
+                                            iconAnchor: [43, 5] // Offset di 3px per staccarla leggermente dalla linea tratteggiata
+                                        })}
+                                        interactive={false}
+                                    />
+                                </React.Fragment>
+                            );
+                        })}
+
+                        {/* BERSAGLI AIS FILTRATI (Raggio 1.5M, soglia movimento a 1.5 nodi con analisi dei rischi) */}
+                        {(data?.environment?.ais_targets || []).map((v) => {
+                            const isMoving = v.sog >= 1.5;
+                            const vectorColor = v.risk === "RED" ? "#ef4444" : "#f97316";
+
+                            if (isMoving) {
+                                const vectorEnd = getVectorCoords(v.lat, v.lon, v.cog, v.sog);
+
+                                return (
+                                    <React.Fragment key={v.id}>
+                                        {/* Vettore COG proiettato a 15 minuti (eredita il colore di rischio) */}
+                                        <Polyline
+                                            positions={[[v.lat, v.lon], vectorEnd]}
+                                            color={vectorColor}
+                                            weight={1.2}
+                                            opacity={0.65}
+                                            dashArray="3, 6"
+                                            interactive={false}
+                                        />
+                                        {/* Triangolo rotante orientato alla prua */}
+                                        <Marker
+                                            position={[v.lat, v.lon]}
+                                            icon={movingVesselIcon(v.cog, v.risk)}
+                                            interactive={false}
+                                        />
+                                    </React.Fragment>
+                                );
+                            } else {
+                                // Rileva se noi stiamo salendo sull'ancora del vicino per disegnare la sua ancora rossa sul fondo
+                                const isOverTheirAnchor = v.risk === "RED" && v.riskMsg === "SOPRA SUA ANCORA!" && v.anchorLat && v.anchorLon;
+                                const myRadius = data?.anchor?.radius || 15; // Recupero raggio di calatata per il cerchio di swing dell'altro
+
+                                return (
+                                    <React.Fragment key={v.id}>
+                                        {/* Puntino discreto dell'imbarcazione all'ancora con colore di rischio */}
+                                        <Marker
+                                            position={[v.lat, v.lon]}
+                                            icon={stationaryVesselIcon(v.risk)}
+                                            interactive={false}
+                                        />
+                                        {/* Nome barca e diagnostica di prossimità integrati ad alto contrasto */}
+                                        <Marker
+                                            position={[v.lat, v.lon]}
+                                            icon={stationaryVesselLabelIcon(v.name, v.risk, v.riskMsg, v.dist)}
+                                            interactive={false}
+                                        />
+                                        {/* Se noi stiamo camminando sopra l'ancora di Nerea, disegna l'ancora di Nerea in rosso sul fondo e il suo cerchio di swing */}
+                                        {isOverTheirAnchor && (
+                                            <React.Fragment>
+                                                {/* Cerchio di brandeggio stimato della barca in errore (Tratteggiato rosso vivo ad alta visibilità) */}
+                                                <Circle
+                                                    center={[v.anchorLat, v.anchorLon]}
+                                                    radius={myRadius}
+                                                    pathOptions={{
+                                                        color: '#ef4444',
+                                                        weight: 1.5,
+                                                        opacity: 0.85,
+                                                        fillColor: '#ef4444',
+                                                        fillOpacity: 0.12,
+                                                        dashArray: '6, 12',
+                                                        interactive: false
+                                                    }}
+                                                />
+                                                {/* Icona ancora sommersa rossa più grande e lampeggiante */}
+                                                <Marker
+                                                    position={[v.anchorLat, v.anchorLon]}
+                                                    icon={nearbyVesselAnchorIcon}
+                                                    zIndexOffset={400}
+                                                    interactive={false}
+                                                />
+                                            </React.Fragment>
+                                        )}
+                                    </React.Fragment>
+                                );
+                            }
+                        })}
+
+                        {/* MARKER POSIZIONE PREVISTA ANCORA (Dinamico: passa a rosso se il vicino ci sale sopra) */}
                         {data?.anchor?.lat && data?.anchor?.lon &&
                          data.anchor.status !== 'LEARNING' && data.anchor.status !== 'SETTLING' && data.anchor.status !== 'MOVING' && (
                             <Marker
                                 position={[data.anchor.lat, data.anchor.lon]}
-                                icon={anchorMarkerIcon}
+                                icon={myAnchorMarkerIcon(isMyAnchorThreatened)}
                                 zIndexOffset={500}
                             />
                         )}
