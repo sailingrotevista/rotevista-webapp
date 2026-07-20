@@ -74,8 +74,8 @@ const stationaryVesselIcon = (risk) => {
     });
 };
 
-/** Icona testuale trasparente ad alto contrasto - Disposta a due righe con font ingrandito (11px / 9px) */
-const stationaryVesselLabelIcon = (name, risk, riskMsg, dist) => {
+/** Icona testuale trasparente ad alto contrasto - Mostra il ritardo segnale RIT se la trasmissione supera i 2 minuti */
+const stationaryVesselLabelIcon = (name, risk, riskMsg, dist, ageSec) => {
     let color = "rgba(225, 225, 225, 0.85)"; // Grigio di default
     let extraTxt = "";
 
@@ -86,26 +86,33 @@ const stationaryVesselLabelIcon = (name, risk, riskMsg, dist) => {
         color = "#f97316";
         extraTxt = `(${riskMsg} - ${dist}m)`;
     } else if (dist <= 200) {
-        extraTxt = `(${dist}m)`; // Mostra la distanza pulita sotto i 200 metri per il test
+        extraTxt = `${dist}m`; // Distanza pulita sotto i 200 metri
+    }
+
+    // Se il segnale AIS reale è obsoleto (oltre 2 minuti), mostriamo il ritardo nel sottotitolo
+    if (ageSec >= 120) {
+        let ageMin = Math.round(ageSec / 60);
+        extraTxt = extraTxt ? `${extraTxt} • RIT: ${ageMin} MIN` : `RIT: ${ageMin} MIN`;
     }
 
     return new L.DivIcon({
         html: `
             <div style="display: flex; flex-direction: column; align-items: flex-start; justify-content: center; line-height: 1.15; white-space: nowrap; text-transform: uppercase;">
                 <span style="font-size: 11px; font-weight: 900; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;">${name}</span>
-                ${extraTxt ? `<span style="font-size: 9px; font-weight: 900; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; margin-top: 1px;">(${extraTxt})</span>` : ""}
+                ${extraTxt ? `<span style="font-size: 7.5px; font-weight: 900; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; margin-top: 1px;">(${extraTxt})</span>` : ""}
             </div>
         `,
         className: 'ais-vessel-label',
-        iconSize: [300, 32], // Modificato: aumentato a 300x32 per ospitare font più grandi senza clipping
-        iconAnchor: [-7, 16] // Modificato: spostato verticalmente a 16px per centrare rispetto al container da 32px
+        iconSize: [300, 32],
+        iconAnchor: [-7, 16]
     });
 };
 
-/** Icona del triangolo ambra per le barche in movimento (sog >= 1.5 kn) con colore in base al rischio */
-const movingVesselIcon = (cog, risk) => {
-    let color = "#f97316"; // Ambra di default
-    if (risk === "RED") color = "#ef4444";
+/** Icona del triangolo per le barche in movimento (sog >= 1.5 kn) - Colore dinamico coordinato (Verde, Ambra, Rosso) */
+const movingVesselIcon = (cog, risk, tcpa) => {
+    let color = "#f97316"; // Ambra di default (Rischio swing/incrocio)
+    if (risk === "RED") color = "#ef4444"; // Rosso (Collisione)
+    else if (tcpa !== null && tcpa < 0) color = "#22c55e"; // Verde (Rotta sicura in transito)
 
     return new L.DivIcon({
         html: `<div style="transform: rotate(${cog}deg); font-size: 11px; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">▲</div>`,
@@ -115,31 +122,44 @@ const movingVesselIcon = (cog, risk) => {
     });
 };
 
-/** Icona testuale per bersagli in movimento con font ingrandito (11px / 9px) e indicatore di rotta sicura */
-const movingVesselLabelIcon = (name, sog, cpa, tcpa, crossDir, risk) => {
-    let mainColor = risk === "RED" ? "#ef4444" : "rgba(225, 225, 225, 0.85)";
-    let cpaColor = risk === "RED" ? "#ef4444" : "#f97316";
+/** Icona testuale per bersagli in movimento - Integra il ritardo segnale RIT coordinato cromaticamente */
+const movingVesselLabelIcon = (name, sog, cpa, tcpa, crossDir, risk, ageSec) => {
+    let nameColor = "rgba(225, 225, 225, 0.85)"; // Grigio di default
+    let sogColor = "rgba(225, 225, 225, 0.70)"; // Grigio per la velocità
+    let cpaColor = "#f97316"; // Ambra di default (rischio incrocio)
     let subTxt = "";
 
-    if (tcpa !== null) {
-        if (tcpa < 0) {
-            subTxt = "✅"; // Solo un tick per rotte sicure in transito/allontanamento
-            // Usa il verde brillante per rassicurare visivamente, pur mantenendo l'ombra nera di contrasto
-            cpaColor = "#22c55e";
-        } else {
-            subTxt = `CPA: ${cpa}m (${crossDir}) IN ${Math.round(tcpa)} MIN`;
-        }
+    // Se il segnale AIS reale è obsoleto (oltre 2 minuti), mostriamo il ritardo sulla velocità
+    let ritTxt = "";
+    if (ageSec >= 120) {
+        let ageMin = Math.round(ageSec / 60);
+        ritTxt = ` • RIT: ${ageMin} MIN`;
+    }
+
+    if (risk === "RED") {
+        nameColor = "#ef4444";
+        sogColor = "#ef4444";
+        cpaColor = "#ef4444";
+        subTxt = `${sog} kn${ritTxt} • COLLISIONE! - CPA: ${cpa}m`;
+    } else if (tcpa !== null && tcpa >= 0) {
+        // Rotta con incrocio: mostriamo i dati CPA in ambra a dimensione intermedia (9.5px) sulla terza riga
+        subTxt = `${sog} kn${ritTxt} • CPA: ${cpa}m (${crossDir}) IN ${Math.round(tcpa)} MIN`;
+    } else if (tcpa !== null && tcpa < 0) {
+        // Rotta sicura: testo del nome e della velocità diventano verdi, scompare la terza riga
+        nameColor = "#22c55e";
+        sogColor = "rgba(34, 197, 94, 0.85)";
+        subTxt = `${sog} kn${ritTxt}`; // Mostra solo velocità e ritardo (tutto verde)
     }
 
     return new L.DivIcon({
         html: `
             <div style="display: flex; flex-direction: column; align-items: flex-start; justify-content: center; line-height: 1.15; white-space: nowrap; text-transform: uppercase;">
-                <span style="font-size: 11px; font-weight: 900; color: ${mainColor}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;">${name} (${sog} kn)</span>
-                ${subTxt ? `<span style="font-size: 9px; font-weight: 900; color: ${cpaColor}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; margin-top: 1px;">${subTxt}</span>` : ""}
+                <span style="font-size: 11px; font-weight: 900; color: ${nameColor}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;">${name}</span>
+                <span style="font-size: 7.5px; font-weight: 900; color: ${sogColor}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; margin-top: 1px;">${subTxt}</span>
             </div>
         `,
         className: 'ais-moving-label',
-        iconSize: [300, 32],
+        iconSize: [300, 32], // Altezza a 32px (rimossa la terza riga per massima compattezza, ritardo integrato su seconda riga)
         iconAnchor: [-10, 16]
     });
 };
@@ -204,7 +224,8 @@ const MapPlugins = ({
     autoFollow,
     setAutoFollow,
     isMapFull,
-    setIsMapFull
+    setIsMapFull,
+    defaultZoom // <--- INSERITA LA VARIABILE DI CO-ORDINAMENTO ZOOM DINAMICO
 }) => {
     const map = useMap();
 
@@ -248,16 +269,16 @@ const MapPlugins = ({
     });
 
     // =========================
-    // LIVE FOLLOW
+    // LIVE FOLLOW CON ZOOM ADATTIVO AUTOMATICO AL CAMBIO DI STATO
     // =========================
     useEffect(() => {
         if (autoFollow && coords[0] !== 0) {
-            map.setView(coords, map.getZoom(), {
+            map.setView(coords, defaultZoom, { // <--- ZOOM ADATTIVO DINAMICO (15 o 18)
                 animate: true,
                 duration: 0.5
             });
         }
-    }, [coords, autoFollow, map]);
+    }, [coords, autoFollow, defaultZoom, map]); // Aggiunto defaultZoom alle dipendenze
 
     return (
         <>
@@ -298,8 +319,8 @@ const MapPlugins = ({
                 <button
                     onClick={() => {
                         setAutoFollow(true);
-                        // Forza il ritorno alle coordinate e allo zoom di default (18)
-                        map.flyTo(coords, 18, {
+                        // Forza il ritorno alle coordinate e allo zoom di default coerente allo stato (15 o 18)
+                        map.flyTo(coords, defaultZoom, { // <--- DINAMICO
                             duration: 0.5
                         });
                     }}
@@ -350,14 +371,17 @@ const HomeView = ({ manager, onTabChange }) => {
     const lon = parseFloat(data?.gps?.lon) || 14.54;
     const coords = [lat, lon];
 
+    // Calcola il livello di zoom adattivo (18 all'ancora per precisione, 15 in navigazione per un raggio di 1-1.5 miglia)
+    const isAnchored = data?.anchor?.status && data.anchor.status !== 'MOVING';
+    const defaultZoom = isAnchored ? 18 : 15;
+
     /** Calcola il centro dinamico per gli anelli di distanza (Ancora o Barca) */
     const rangeRingsCenter = useMemo(() => {
-        const isAnchored = data?.anchor?.status && data.anchor.status !== 'MOVING';
         if (isAnchored && data?.anchor?.lat && data?.anchor?.lon) {
             return { lat: parseFloat(data.anchor.lat), lon: parseFloat(data.anchor.lon) };
         }
         return { lat: lat, lon: lon };
-    }, [data?.anchor?.status, data?.anchor?.lat, data?.anchor?.lon, lat, lon]);
+    }, [isAnchored, data?.anchor?.lat, data?.anchor?.lon, lat, lon]); // Sostituito isAnchored come dipendenza pulita
 
     /** Scansiona i bersagli AIS per capire se un vicino sta galleggiando sopra la nostra ancora */
     const isMyAnchorThreatened = useMemo(() => {
@@ -614,7 +638,7 @@ const HomeView = ({ manager, onTabChange }) => {
                 
                     <MapContainer
                         center={coords}
-                        zoom={18}
+                        zoom={defaultZoom} // <--- INITIALIZZA CON LO ZOOM CONTESTUALE DI STATO
                         maxZoom={22}
                         style={{ height: '100%', width: '100%' }}
                         zoomControl={false}
@@ -634,6 +658,7 @@ const HomeView = ({ manager, onTabChange }) => {
                             setAutoFollow={setAutoFollow}
                             isMapFull={isMapFull}
                             setIsMapFull={setIsMapFull}
+                            defaultZoom={defaultZoom} // <--- COMPILA IL CO-ORDINAMENTO DELLO ZOOM
                         />
 
                         {/* CERCHIO DI SICUREZZA PROVVISORIO (Arancione, visibile in fase di LEARNING o SETTLING) */}
@@ -703,87 +728,98 @@ const HomeView = ({ manager, onTabChange }) => {
                             );
                         })}
 
-                        {/* BERSAGLI AIS FILTRATI (Raggio 1.5M, soglia movimento a 1.5 nodi con analisi dei rischi) */}
+                        {/* BERSAGLI AIS FILTRATI (Raggio 5M, soglia movimento a 1.5 nodi con analisi dei rischi e traccia storica) */}
                         {(data?.environment?.ais_targets || []).map((v) => {
                             const isMoving = v.sog >= 1.5;
-                            const vectorColor = v.risk === "RED" ? "#ef4444" : "#f97316";
-
-                            if (isMoving) {
-                                const vectorEnd = getVectorCoords(v.lat, v.lon, v.cog, v.sog);
-
-                                return (
-                                    <React.Fragment key={v.id}>
-                                        {/* Vettore COG proiettato a 15 minuti (eredita il colore di rischio) */}
-                                        <Polyline
-                                            positions={[[v.lat, v.lon], vectorEnd]}
-                                            color={vectorColor}
-                                            weight={1.2}
-                                            opacity={0.65}
-                                            dashArray="3, 6"
-                                            interactive={false}
-                                        />
-                                        {/* Triangolo rotante orientato alla prua */}
-                                        <Marker
-                                            position={[v.lat, v.lon]}
-                                            icon={movingVesselIcon(v.cog, v.risk)}
-                                            interactive={false}
-                                        />
-                                        {/* Etichetta ARPA con Nome, Velocità, CPA e Incrocio */}
-                                        <Marker
-                                            position={[v.lat, v.lon]}
-                                            icon={movingVesselLabelIcon(v.name, v.sog, v.cpa, v.tcpa, v.crossDir, v.risk)}
-                                            interactive={false}
-                                        />
-                                    </React.Fragment>
-                                );
-                            } else {
-                                // Rileva se noi stiamo salendo sull'ancora del vicino per disegnare la sua ancora rossa sul fondo
-                                const isOverTheirAnchor = v.risk === "RED" && v.riskMsg === "SOPRA SUA ANCORA!" && v.anchorLat && v.anchorLon;
-                                const myRadius = data?.anchor?.radius || 15; // Recupero raggio di calatata per il cerchio di swing dell'altro
-
-                                return (
-                                    <React.Fragment key={v.id}>
-                                        {/* Puntino discreto dell'imbarcazione all'ancora con colore di rischio */}
-                                        <Marker
-                                            position={[v.lat, v.lon]}
-                                            icon={stationaryVesselIcon(v.risk)}
-                                            interactive={false}
-                                        />
-                                        {/* Nome barca e diagnostica di prossimità integrati ad alto contrasto */}
-                                        <Marker
-                                            position={[v.lat, v.lon]}
-                                            icon={stationaryVesselLabelIcon(v.name, v.risk, v.riskMsg, v.dist)}
-                                            interactive={false}
-                                        />
-                                        {/* Se noi stiamo camminando sopra l'ancora di Nerea, disegna l'ancora di Nerea in rosso sul fondo e il suo cerchio di swing */}
-                                        {isOverTheirAnchor && (
-                                            <React.Fragment>
-                                                {/* Cerchio di brandeggio stimato della barca in errore (Tratteggiato rosso vivo ad alta visibilità) */}
-                                                <Circle
-                                                    center={[v.anchorLat, v.anchorLon]}
-                                                    radius={myRadius}
-                                                    pathOptions={{
-                                                        color: '#ef4444',
-                                                        weight: 1.5,
-                                                        opacity: 0.85,
-                                                        fillColor: '#ef4444',
-                                                        fillOpacity: 0.12,
-                                                        dashArray: '6, 12',
-                                                        interactive: false
-                                                    }}
-                                                />
-                                                {/* Icona ancora sommersa rossa più grande e lampeggiante */}
-                                                <Marker
-                                                    position={[v.anchorLat, v.anchorLon]}
-                                                    icon={nearbyVesselAnchorIcon}
-                                                    zIndexOffset={400}
-                                                    interactive={false}
-                                                />
-                                            </React.Fragment>
-                                        )}
-                                    </React.Fragment>
-                                );
+                            
+                            // Colore dinamico del vettore (Rosso = Pericolo, Verde = Sicuro, Ambra = Incrocio)
+                            let vectorColor = "#f97316";
+                            if (v.risk === "RED") {
+                                vectorColor = "#ef4444";
+                            } else if (v.tcpa !== null && v.tcpa < 0) {
+                                vectorColor = "#22c55e";
                             }
+
+                            return (
+                                <React.Fragment key={v.id}>
+                                    {/* Disegno della traccia storica (AIS Trail) - Spessore aumentato a 1.5, in grigio/bianco tratteggiato sfumato */}
+                                    {v.trail && v.trail.length >= 2 && (
+                                        <Polyline
+                                            positions={v.trail.map(pt => [pt.lat, pt.lon])}
+                                            color="#ffffff"
+                                            weight={1.5}
+                                            opacity={0.40}
+                                            dashArray="2, 6"
+                                            interactive={false}
+                                        />
+                                    )}
+
+                                    {isMoving ? (
+                                        <React.Fragment>
+                                            {/* Vettore COG proiettato a 15 minuti - Spessore raddoppiato a 3.0 ad alta visibilità e colore dinamico coordinato */}
+                                            <Polyline
+                                                positions={[[v.lat, v.lon], getVectorCoords(v.lat, v.lon, v.cog, v.sog)]}
+                                                color={vectorColor}
+                                                weight={3.0}
+                                                opacity={0.85}
+                                                dashArray="6, 6"
+                                                interactive={false}
+                                            />
+                                            {/* Triangolo rotante orientato alla prua con colore di rischio/rotta coordinato */}
+                                            <Marker
+                                                position={[v.lat, v.lon]}
+                                                icon={movingVesselIcon(v.cog, v.risk, v.tcpa)}
+                                                interactive={false}
+                                            />
+                                            {/* Etichetta ARPA con Nome, Velocità, CPA e Incrocio (passa v.isEstimated) */}
+                                            <Marker
+                                                position={[v.lat, v.lon]}
+                                                icon={movingVesselLabelIcon(v.name, v.sog, v.cpa, v.tcpa, v.crossDir, v.risk, v.isEstimated)}
+                                                interactive={false}
+                                            />
+                                        </React.Fragment>
+                                    ) : (
+                                        <React.Fragment>
+                                            {/* Puntino discreto dell'imbarcazione all'ancora con colore di rischio */}
+                                            <Marker
+                                                position={[v.lat, v.lon]}
+                                                icon={stationaryVesselIcon(v.risk)}
+                                                interactive={false}
+                                            />
+                                            {/* Nome barca e diagnostica di prossimità con ritardo segnale RIT integrato ad alto contrasto */}
+                                            <Marker
+                                                position={[v.lat, v.lon]}
+                                                icon={stationaryVesselLabelIcon(v.name, v.risk, v.riskMsg, v.dist, v.age)}
+                                                interactive={false}
+                                            />
+                                            {/* Se stiamo salendo sull'ancora del vicino, disegna la sua ancora in rosso e il raggio di swing */}
+                                            {v.risk === "RED" && v.riskMsg === "SOPRA SUA ANCORA!" && v.anchorLat && v.anchorLon && (
+                                                <React.Fragment>
+                                                    <Circle
+                                                        center={[v.anchorLat, v.anchorLon]}
+                                                        radius={data?.anchor?.radius || 15}
+                                                        pathOptions={{
+                                                            color: '#ef4444',
+                                                            weight: 1.0,
+                                                            opacity: 0.50,
+                                                            fillColor: '#ef4444',
+                                                            fillOpacity: 0.05,
+                                                            dashArray: '6, 12',
+                                                            interactive: false
+                                                        }}
+                                                    />
+                                                    <Marker
+                                                        position={[v.anchorLat, v.anchorLon]}
+                                                        icon={nearbyVesselAnchorIcon}
+                                                        zIndexOffset={400}
+                                                        interactive={false}
+                                                    />
+                                                </React.Fragment>
+                                            )}
+                                        </React.Fragment>
+                                    )}
+                                </React.Fragment>
+                            );
                         })}
 
                         {/* MARKER POSIZIONE PREVISTA ANCORA (Dinamico: passa a rosso se il vicino ci sale sopra) */}
