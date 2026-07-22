@@ -88,7 +88,7 @@ export const useBoatData = () => {
     };
 
     /**
-         * 4. CICLI DI AGGIORNAMENTO (Lifecycle con sospensione intelligente)
+         * 4. CICLI DI AGGIORNAMENTO (Lifecycle con sospensione intelligente e risparmio energetico)
          */
 
         // Effetto Polling con Watchdog di Visibilità (Page Visibility API)
@@ -96,23 +96,23 @@ export const useBoatData = () => {
             let intervalId = null;
 
             const handleVisibilityChange = () => {
+                // Pulisce SEMPRE l'intervallo precedente per evitare timer duplicati in memoria
+                if (intervalId) {
+                    clearInterval(intervalId);
+                    intervalId = null;
+                }
+
                 if (document.visibilityState === 'visible') {
-                    // Al risveglio scarica subito i dati freschi e riavvia il timer
+                    // Al risveglio scarica subito i dati freschi e riavvia il timer da 5s
                     fetchData();
                     intervalId = setInterval(fetchData, 5000);
-                } else {
-                    // Se la scheda va in background o lo schermo si blocca, spegne il polling
-                    if (intervalId) {
-                        clearInterval(intervalId);
-                        intervalId = null;
-                    }
                 }
             };
 
-            // Esegue il primo controllo e avvio
+            // Esegue il primo controllo e avvio all'apertura
             handleVisibilityChange();
 
-            // Ascolta i cambi di visibilità del browser (blocco schermo, cambio scheda)
+            // Ascolta i cambi di visibilità del browser (blocco schermo, minimizzazione, cambio scheda)
             document.addEventListener('visibilitychange', handleVisibilityChange);
             
             return () => {
@@ -121,17 +121,21 @@ export const useBoatData = () => {
             };
         }, []);
 
-    // Effetto Watchdog: Aggiorna il contatore dei secondi "Dati ricevuti da X secondi"
-    useEffect(() => {
-        const interval = setInterval(() => {
-            if (lastUpdate) {
-                const diff = Math.floor((new Date() - lastUpdate) / 1000);
-                setSecondsSinceLastUpdate(diff);
-                setIsDataStale(diff > 30);
-            }
-        }, 1000);
-        return () => clearInterval(interval);
-    }, [lastUpdate]);
+        // Effetto Watchdog: Aggiorna il contatore dei secondi "Dati ricevuti da X secondi"
+        useEffect(() => {
+            const interval = setInterval(() => {
+                // Se la pagina è in background o lo schermo è spento, ferma il ricalcolo per congelare la CPU
+                if (document.hidden) return;
+
+                if (lastUpdate) {
+                    const diff = Math.floor((new Date() - lastUpdate) / 1000);
+                    setSecondsSinceLastUpdate(diff);
+                    setIsDataStale(diff > 30);
+                }
+            }, 1000);
+            
+            return () => clearInterval(interval);
+        }, [lastUpdate]);
 
     // Calcolo del colore di stato (Verde, Arancio, Rosso)
     const statusColor = secondsSinceLastUpdate < 15 ? 'bg-green-500'
