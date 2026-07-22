@@ -54,6 +54,18 @@ const getWestLabelCoords = (center, radius) => {
     return [center.lat, center.lon + dLon];
 };
 
+/** Restituisce i 3 cerchi di distanza dinamici in base allo zoom attuale, scalati per rientrare su schermi iPhone */
+const getDynamicRangeRings = (zoom) => {
+    if (zoom >= 19) return [{ r: 15, label: "15m" }, { r: 30, label: "30m" }, { r: 45, label: "45m" }];
+    if (zoom === 18) return [{ r: 25, label: "25m" }, { r: 50, label: "50m" }, { r: 75, label: "75m" }];
+    if (zoom === 17) return [{ r: 50, label: "50m" }, { r: 100, label: "100m" }, { r: 150, label: "150m" }];
+    if (zoom === 16) return [{ r: 100, label: "100m" }, { r: 200, label: "200m" }, { r: 300, label: "300m" }];
+    if (zoom === 15) return [{ r: 250, label: "250m" }, { r: 500, label: "500m" }, { r: 750, label: "750m" }];
+    if (zoom === 14) return [{ r: 500, label: "500m" }, { r: 926, label: "0.5 NM" }, { r: 1852, label: "1 NM" }];
+    if (zoom === 13) return [{ r: 926, label: "0.5 NM" }, { r: 1852, label: "1 NM" }, { r: 3704, label: "2 NM" }];
+    return [{ r: 1852, label: "1 NM" }, { r: 3704, label: "2 NM" }, { r: 9260, label: "5 NM" }];
+};
+
 /** Calcola la coordinata di proiezione futura a 15 minuti basandosi su COG e SOG */
 const getVectorCoords = (lat, lon, cog, sog) => {
     const d2r = Math.PI / 180;
@@ -744,17 +756,16 @@ const HomeView = ({ manager, onTabChange }) => {
                             />
                         )}
 
-                        {/* RANGE RINGS STRATEGICI (100m, 200m, 300m) CON ETICHETTE ALLINEATE A OVEST */}
-                        {[100, 200, 300].map((radius) => {
-                            const labelPos = getWestLabelCoords(rangeRingsCenter, radius);
-                            const labelText = `${radius}m`;
+                        {/* RANGE RINGS STRATEGICI ADATTIVI ALLO ZOOM CON ETICHETTE ALLINEATE A OVEST */}
+                        {getDynamicRangeRings(currentZoom).map((ring) => {
+                            const labelPos = getWestLabelCoords(rangeRingsCenter, ring.r);
 
                             return (
-                                <React.Fragment key={`ring-${radius}`}>
+                                <React.Fragment key={`ring-${ring.r}`}>
                                     {/* Cerchio di distanza bianco e ben visibile */}
                                     <Circle
                                         center={[rangeRingsCenter.lat, rangeRingsCenter.lon]}
-                                        radius={radius}
+                                        radius={ring.r}
                                         pathOptions={{
                                             color: '#ffffff',
                                             weight: 1.0,
@@ -764,14 +775,14 @@ const HomeView = ({ manager, onTabChange }) => {
                                             interactive: false
                                         }}
                                     />
-                                    {/* Etichetta testuale ad alto contrasto (Halo/Outline nera per massima leggibilità su ogni sfondo) */}
+                                    {/* Etichetta testuale ad alto contrasto con scala dinamica (m / NM) */}
                                     <Marker
                                         position={labelPos}
                                         icon={new L.DivIcon({
-                                            html: `<div style="font-size: 8px; font-weight: 900; color: rgba(255, 255, 255, 0.90); font-family: monospace; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; white-space: nowrap; text-align: right; width: 100%;">${labelText}</div>`,
+                                            html: `<div style="font-size: 8px; font-weight: 900; color: rgba(255, 255, 255, 0.90); font-family: monospace; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; white-space: nowrap; text-align: right; width: 100%;">${ring.label}</div>`,
                                             className: 'range-label-marker',
-                                            iconSize: [40, 10],
-                                            iconAnchor: [43, 5] // Offset di 3px per staccarla leggermente dalla linea tratteggiata
+                                            iconSize: [50, 10],
+                                            iconAnchor: [53, 5]
                                         })}
                                         interactive={false}
                                     />
