@@ -108,12 +108,17 @@ const stationaryVesselLabelIcon = (name, risk, riskMsg, dist, ageSec) => {
     });
 };
 
-/** Icona del triangolo per le barche in movimento (sog >= 1.5 kn) - Colore dinamico coordinato (Verde, Ambra, Rosso) */
-const movingVesselIcon = (cog, risk, tcpa) => {
-    let color = "#f97316"; // Ambra di default (Rischio swing/incrocio)
-    if (risk === "RED") color = "#ef4444"; // Rosso (Collisione)
-    else if (tcpa !== null && tcpa < 0) color = "#22c55e"; // Verde (Rotta sicura in transito)
+/** Funzione di supporto centralizzata per il colore univoco di Vettore, Freccia ed Etichetta */
+const getVesselStatusColor = (v) => {
+    if (v.risk === "RED") return "#ef4444"; // Rosso: Pericolo / Collisione
+    if (v.tcpa !== null && v.tcpa >= 0) return "#f97316"; // Arancione: Incrocio imminente <= 0.5M
+    if (v.tcpa !== null && v.tcpa < 0) return "#22c55e"; // Verde: Rotta sicura / In allontanamento
+    if (v.risk === "ORANGE") return "#f97316"; // Arancione: Rischio rotazione/swing
+    return "rgba(225, 225, 225, 0.85)"; // Grigio di default
+};
 
+/** Icona del triangolo per le barche in movimento con colore unificato */
+const movingVesselIcon = (cog, color) => {
     return new L.DivIcon({
         html: `<div style="transform: rotate(${cog}deg); font-size: 11px; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">▲</div>`,
         className: 'moving-vessel-marker',
@@ -122,14 +127,11 @@ const movingVesselIcon = (cog, risk, tcpa) => {
     });
 };
 
-/** Icona testuale per bersagli in movimento - Integra il ritardo segnale RIT coordinato cromaticamente */
-const movingVesselLabelIcon = (name, sog, cpa, tcpa, crossDir, risk, ageSec) => {
-    let nameColor = "rgba(225, 225, 225, 0.85)"; // Grigio di default
-    let sogColor = "rgba(225, 225, 225, 0.70)"; // Grigio per la velocità
-    let cpaColor = "#f97316"; // Ambra di default (rischio incrocio)
+/** Icona testuale per bersagli in movimento con colore unificato coordinato */
+const movingVesselLabelIcon = (name, sog, cpa, tcpa, crossDir, risk, ageSec, color) => {
     let subTxt = "";
 
-    // Se il segnale AIS reale è obsoleto (oltre 2 minuti), mostriamo il ritardo sulla velocità
+    // Se il segnale AIS reale è obsoleto (oltre 2 minuti), mostriamo il ritardo
     let ritTxt = "";
     if (ageSec >= 120) {
         let ageMin = Math.round(ageSec / 60);
@@ -137,29 +139,22 @@ const movingVesselLabelIcon = (name, sog, cpa, tcpa, crossDir, risk, ageSec) => 
     }
 
     if (risk === "RED") {
-        nameColor = "#ef4444";
-        sogColor = "#ef4444";
-        cpaColor = "#ef4444";
         subTxt = `${sog} kn${ritTxt} • COLLISIONE! - CPA: ${cpa}m`;
     } else if (tcpa !== null && tcpa >= 0) {
-        // Rotta con incrocio: mostriamo i dati CPA in ambra a dimensione intermedia (9.5px) sulla terza riga
         subTxt = `${sog} kn${ritTxt} • CPA: ${cpa}m (${crossDir}) IN ${Math.round(tcpa)} MIN`;
-    } else if (tcpa !== null && tcpa < 0) {
-        // Rotta sicura: testo del nome e della velocità diventano verdi, scompare la terza riga
-        nameColor = "#22c55e";
-        sogColor = "rgba(34, 197, 94, 0.85)";
-        subTxt = `${sog} kn${ritTxt}`; // Mostra solo velocità e ritardo (tutto verde)
+    } else {
+        subTxt = `${sog} kn${ritTxt}`;
     }
 
     return new L.DivIcon({
         html: `
             <div style="display: flex; flex-direction: column; align-items: flex-start; justify-content: center; line-height: 1.15; white-space: nowrap; text-transform: uppercase;">
-                <span style="font-size: 11px; font-weight: 900; color: ${nameColor}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;">${name}</span>
-                <span style="font-size: 7.5px; font-weight: 900; color: ${sogColor}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; margin-top: 1px;">${subTxt}</span>
+                <span style="font-size: 11px; font-weight: 900; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;">${name}</span>
+                <span style="font-size: 7.5px; font-weight: 900; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; margin-top: 1px;">${subTxt}</span>
             </div>
         `,
         className: 'ais-moving-label',
-        iconSize: [300, 32], // Altezza a 32px (rimossa la terza riga per massima compattezza, ritardo integrato su seconda riga)
+        iconSize: [300, 32],
         iconAnchor: [-10, 16]
     });
 };
@@ -728,21 +723,17 @@ const HomeView = ({ manager, onTabChange }) => {
                             );
                         })}
 
-                        {/* BERSAGLI AIS FILTRATI (Raggio 5M, soglia movimento a 1.5 nodi con analisi dei rischi e traccia storica) */}
+                        {/* BERSAGLI AIS FILTRATI (Raggio 5M, soglia movimento a 0.3 nodi con analisi dei rischi e traccia storica) */}
                         {(data?.environment?.ais_targets || []).map((v) => {
-                            const isMoving = v.sog >= 1.5;
+                            // Soglia movimento allineata al backend (0.3 nodi)
+                            const isMoving = v.sog > 0.3;
                             
-                            // Colore dinamico del vettore (Rosso = Pericolo, Verde = Sicuro, Ambra = Incrocio)
-                            let vectorColor = "#f97316";
-                            if (v.risk === "RED") {
-                                vectorColor = "#ef4444";
-                            } else if (v.tcpa !== null && v.tcpa < 0) {
-                                vectorColor = "#22c55e";
-                            }
+                            // Colore dinamico unificato per Vettore, Triangolo ed Etichetta
+                            const vesselColor = getVesselStatusColor(v);
 
                             return (
                                 <React.Fragment key={v.id}>
-                                    {/* Disegno della traccia storica (AIS Trail) - Spessore aumentato a 1.5, in grigio/bianco tratteggiato sfumato */}
+                                    {/* Disegno della traccia storica (AIS Trail) */}
                                     {v.trail && v.trail.length >= 2 && (
                                         <Polyline
                                             positions={v.trail.map(pt => [pt.lat, pt.lon])}
@@ -756,25 +747,25 @@ const HomeView = ({ manager, onTabChange }) => {
 
                                     {isMoving ? (
                                         <React.Fragment>
-                                            {/* Vettore COG proiettato a 15 minuti - Spessore raddoppiato a 3.0 ad alta visibilità e colore dinamico coordinato */}
+                                            {/* Vettore COG proiettato a 15 minuti - Colore unificato */}
                                             <Polyline
                                                 positions={[[v.lat, v.lon], getVectorCoords(v.lat, v.lon, v.cog, v.sog)]}
-                                                color={vectorColor}
+                                                color={vesselColor}
                                                 weight={3.0}
                                                 opacity={0.85}
                                                 dashArray="6, 6"
                                                 interactive={false}
                                             />
-                                            {/* Triangolo rotante orientato alla prua con colore di rischio/rotta coordinato */}
+                                            {/* Triangolo rotante orientato al COG con colore unificato */}
                                             <Marker
                                                 position={[v.lat, v.lon]}
-                                                icon={movingVesselIcon(v.cog, v.risk, v.tcpa)}
+                                                icon={movingVesselIcon(v.cog, vesselColor)}
                                                 interactive={false}
                                             />
-                                            {/* Etichetta ARPA con Nome, Velocità, CPA e Incrocio (passa v.isEstimated) */}
+                                            {/* Etichetta ARPA con Nome, Velocità, CPA e Incrocio con colore unificato */}
                                             <Marker
                                                 position={[v.lat, v.lon]}
-                                                icon={movingVesselLabelIcon(v.name, v.sog, v.cpa, v.tcpa, v.crossDir, v.risk, v.isEstimated)}
+                                                icon={movingVesselLabelIcon(v.name, v.sog, v.cpa, v.tcpa, v.crossDir, v.risk, v.age, vesselColor)}
                                                 interactive={false}
                                             />
                                         </React.Fragment>
