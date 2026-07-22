@@ -11,6 +11,9 @@ import {
 
 // ============================================================
 // 1. CONFIGURAZIONE ICONE (Barca e Ancora)
+// MEMO OTTIMIZZAZIONE FUTURA: Se in rade con molti bersagli AIS (>20)
+// si notano micro-lag durante lo zoom/pan della mappa, memoizzare
+// l'istanziazione di L.DivIcon per evitare di ricreare oggetti DOM ad ogni render.
 // ============================================================
 const boatIcon = new L.DivIcon({
     html: `<div style="font-size: 20px; opacity: 0.8; filter: drop-shadow(0 0 5px black);">⛵</div>`,
@@ -74,40 +77,6 @@ const stationaryVesselIcon = (risk) => {
     });
 };
 
-/** Icona testuale trasparente ad alto contrasto per barche all'ancora - Testi ingranditi (13px / 9.5px) */
-const stationaryVesselLabelIcon = (name, risk, riskMsg, dist, ageSec) => {
-    let color = "rgba(225, 225, 225, 0.85)"; // Grigio di default
-    let extraTxt = "";
-
-    if (risk === "RED") {
-        color = "#ef4444";
-        extraTxt = `(${riskMsg} - ${dist}m)`;
-    } else if (risk === "ORANGE") {
-        color = "#f97316";
-        extraTxt = `(${riskMsg} - ${dist}m)`;
-    } else if (dist <= 200) {
-        extraTxt = `${dist}m`; // Distanza pulita sotto i 200 metri
-    }
-
-    // Se il segnale AIS reale è obsoleto (oltre 2 minuti), mostriamo il ritardo nel sottotitolo
-    if (ageSec >= 120) {
-        let ageMin = Math.round(ageSec / 60);
-        extraTxt = extraTxt ? `${extraTxt} • RIT: ${ageMin} MIN` : `RIT: ${ageMin} MIN`;
-    }
-
-    return new L.DivIcon({
-        html: `
-            <div style="display: flex; flex-direction: column; align-items: flex-start; justify-content: center; line-height: 1.15; white-space: nowrap; text-transform: uppercase;">
-                <span style="font-size: 13px; font-weight: 900; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;">${name}</span>
-                ${extraTxt ? `<span style="font-size: 9.5px; font-weight: 900; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; margin-top: 1px;">(${extraTxt})</span>` : ""}
-            </div>
-        `,
-        className: 'ais-vessel-label',
-        iconSize: [350, 40],
-        iconAnchor: [-9, 20]
-    });
-};
-
 /** Funzione di supporto centralizzata per il colore univoco di Vettore, Freccia ed Etichetta */
 const getVesselStatusColor = (v) => {
     if (v.risk === "RED") return "#ef4444"; // Rosso: Pericolo / Collisione
@@ -117,19 +86,87 @@ const getVesselStatusColor = (v) => {
     return "rgba(225, 225, 225, 0.85)"; // Grigio di default
 };
 
-/** Icona del triangolo per le barche in movimento con colore unificato */
-const movingVesselIcon = (cog, color) => {
+/** Calcola le dimensioni di icone e testi in base al livello di zoom della mappa */
+const getAisSizes = (zoom) => {
+    if (zoom >= 18) {
+        // Zoom In (Molto vicino) -> Ingrandito (15px / 11px)
+        return { nameSize: "15px", subSize: "11px", emojiSize: "26px", markerSize: 20, iconSize: [400, 64], iconAnchor: [-14, 32] };
+    }
+    if (zoom <= 14) {
+        // Zoom Panoramico (Lontano) -> Ridotto (10px / 7.5px)
+        return { nameSize: "10px", subSize: "7.5px", emojiSize: "16px", markerSize: 12, iconSize: [280, 42], iconAnchor: [-8, 21] };
+    }
+    // Zoom Normale (15 - 17) -> Standard (13px / 9.5px)
+    return { nameSize: "13px", subSize: "9.5px", emojiSize: "22px", markerSize: 16, iconSize: [350, 56], iconAnchor: [-12, 28] };
+};
+
+/** Icona del triangolo per le barche in movimento con dimensione dinamica da zoom */
+const movingVesselIcon = (cog, color, zoom) => {
+    const s = getAisSizes(zoom);
     return new L.DivIcon({
-        html: `<div style="transform: rotate(${cog}deg); font-size: 11px; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">▲</div>`,
+        html: `<div style="transform: rotate(${cog}deg); font-size: ${s.markerSize}px; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">▲</div>`,
         className: 'moving-vessel-marker',
-        iconSize: [16, 16],
-        iconAnchor: [8, 8]
+        iconSize: [s.markerSize, s.markerSize],
+        iconAnchor: [s.markerSize / 2, s.markerSize / 2]
     });
 };
 
-/** Icona testuale per bersagli in movimento - Struttura a 3 righe (Nome 13px, Velocità 9.5px, Incrocio 13px) */
-const movingVesselLabelIcon = (name, sog, cpa, tcpa, crossDir, risk, ageSec, color) => {
-    // Se il segnale AIS reale è obsoleto (oltre 2 minuti), mostriamo il ritardo
+/** Funzione per convertire il codice AIS del tipo di nave nell'emoji corrispondente */
+const getShipTypeEmoji = (type) => {
+    const t = parseInt(type) || 0;
+    if (t === 36) return "⛵"; // Vela
+    if (t === 37) return "🛥️"; // Diporto a motore
+    if (t === 30) return "🐟"; // Peschereccio
+    if (t >= 50 && t <= 59) return "👨🏻‍✈️"; // Pilota / Supporto
+    if (t === 31 || t === 32 || t === 52) return "🚜"; // Rimorchiatore
+    if (t >= 60 && t <= 69) return "⛴️"; // Passeggeri / Traghetto
+    if (t >= 70 && t <= 79) return "📦"; // Cargo / Container / Bulk
+    if (t >= 80 && t <= 89) return "🛢️"; // Petroliera / Tanker
+    if (t >= 40 && t <= 49) return "🚤"; // Unità Veloce HSC
+    return ""; // Default
+};
+
+/** Icona testuale per bersagli all'ancora con Emoji affiancata e scala dinamica da zoom */
+const stationaryVesselLabelIcon = (name, risk, riskMsg, dist, ageSec, type, zoom) => {
+    let color = "rgba(225, 225, 225, 0.85)";
+    let extraTxt = "";
+
+    if (risk === "RED") {
+        color = "#ef4444";
+        extraTxt = `(${riskMsg} - ${dist}m)`;
+    } else if (risk === "ORANGE") {
+        color = "#f97316";
+        extraTxt = `(${riskMsg} - ${dist}m)`;
+    } else if (dist <= 200) {
+        extraTxt = `${dist}m`;
+    }
+
+    if (ageSec >= 120) {
+        let ageMin = Math.round(ageSec / 60);
+        extraTxt = extraTxt ? `${extraTxt} • RIT: ${ageMin} MIN` : `RIT: ${ageMin} MIN`;
+    }
+
+    const emoji = getShipTypeEmoji(type);
+    const s = getAisSizes(zoom);
+
+    return new L.DivIcon({
+        html: `
+            <div style="display: flex; flex-direction: row; align-items: center; gap: 5px; white-space: nowrap; text-transform: uppercase;">
+                ${emoji ? `<span style="font-size: ${s.emojiSize}; line-height: 1;">${emoji}</span>` : ""}
+                <div style="display: flex; flex-direction: column; align-items: flex-start; justify-content: center; line-height: 1.15;">
+                    <span style="font-size: ${s.nameSize}; font-weight: 900; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;">${name}</span>
+                    ${extraTxt ? `<span style="font-size: ${s.subSize}; font-weight: 900; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; margin-top: 1px;">(${extraTxt})</span>` : ""}
+                </div>
+            </div>
+        `,
+        className: 'ais-vessel-label',
+        iconSize: s.iconSize,
+        iconAnchor: s.iconAnchor
+    });
+};
+
+/** Icona testuale per bersagli in movimento con Emoji e blocco a 2/3 righe con scala dinamica da zoom */
+const movingVesselLabelIcon = (name, sog, cpa, tcpa, crossDir, risk, ageSec, color, type, zoom) => {
     let ritTxt = "";
     if (ageSec >= 120) {
         let ageMin = Math.round(ageSec / 60);
@@ -145,17 +182,23 @@ const movingVesselLabelIcon = (name, sog, cpa, tcpa, crossDir, risk, ageSec, col
         cpaLine = `CPA: ${cpa}m (${crossDir}) IN ${Math.round(tcpa)} MIN`;
     }
 
+    const emoji = getShipTypeEmoji(type);
+    const s = getAisSizes(zoom);
+
     return new L.DivIcon({
         html: `
-            <div style="display: flex; flex-direction: column; align-items: flex-start; justify-content: center; line-height: 1.15; white-space: nowrap; text-transform: uppercase;">
-                <span style="font-size: 13px; font-weight: 900; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;">${name}</span>
-                <span style="font-size: 9.5px; font-weight: 900; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; margin-top: 1px;">${speedLine}</span>
-                ${cpaLine ? `<span style="font-size: 13px; font-weight: 900; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; margin-top: 2px;">${cpaLine}</span>` : ""}
+            <div style="display: flex; flex-direction: row; align-items: center; gap: 5px; white-space: nowrap; text-transform: uppercase;">
+                ${emoji ? `<span style="font-size: ${s.emojiSize}; line-height: 1;">${emoji}</span>` : ""}
+                <div style="display: flex; flex-direction: column; align-items: flex-start; justify-content: center; line-height: 1.15;">
+                    <span style="font-size: ${s.nameSize}; font-weight: 900; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;">${name}</span>
+                    <span style="font-size: ${s.subSize}; font-weight: 900; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; margin-top: 1px;">${speedLine}</span>
+                    ${cpaLine ? `<span style="font-size: ${s.nameSize}; font-weight: 900; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; margin-top: 2px;">${cpaLine}</span>` : ""}
+                </div>
             </div>
         `,
         className: 'ais-moving-label',
-        iconSize: [350, 56],
-        iconAnchor: [-12, 28]
+        iconSize: s.iconSize,
+        iconAnchor: s.iconAnchor
     });
 };
 
@@ -220,9 +263,26 @@ const MapPlugins = ({
     setAutoFollow,
     isMapFull,
     setIsMapFull,
-    defaultZoom // <--- INSERITA LA VARIABILE DI CO-ORDINAMENTO ZOOM DINAMICO
+    defaultZoom,
+    onZoomChange // <--- Callback per aggiornare lo zoom dinamico
 }) => {
     const map = useMap();
+
+    // =========================
+    // USER INTERACTION & ZOOM SYNC
+    // =========================
+    const mapEvents = useMapEvents({
+        dragstart: () => setAutoFollow(false),
+        zoomstart: () => setAutoFollow(false),
+        zoomend: () => {
+            if (onZoomChange) onZoomChange(map.getZoom());
+        }
+    });
+
+    // Inizializza lo zoom corrente alla prima vista
+    useEffect(() => {
+        if (onZoomChange) onZoomChange(map.getZoom());
+    }, [map, onZoomChange]);
 
     // =========================
     // ZOOM CONTROL
@@ -236,6 +296,7 @@ const MapPlugins = ({
             : currentZoom - 1;
 
         map.setZoom(nextZoom);
+        if (onZoomChange) onZoomChange(nextZoom);
     };
 
     // =========================
@@ -254,14 +315,6 @@ const MapPlugins = ({
 
         return () => cancelAnimationFrame(id);
     }, [isMapFull, autoFollow, coords, map]);
-
-    // =========================
-    // USER INTERACTION STOP AUTO FOLLOW
-    // =========================
-    useMapEvents({
-        dragstart: () => setAutoFollow(false),
-        zoomstart: () => setAutoFollow(false),
-    });
 
     // =========================
     // LIVE FOLLOW CON ZOOM ADATTIVO AUTOMATICO AL CAMBIO DI STATO
@@ -356,6 +409,11 @@ const HomeView = ({ manager, onTabChange }) => {
     const [showSSLModal, setShowSSLModal] = useState(false);
     const [isMapFull, setIsMapFull] = useState(false);
     const [isCopied, setIsCopied] = useState(false);
+    
+    // Calcola il livello di zoom iniziale (18 all'ancora, 11 in navigazione) e traccia lo zoom corrente
+    const isAnchored = data?.anchor?.status && data.anchor.status !== 'MOVING';
+    const defaultZoom = isAnchored ? 18 : 11;
+    const [currentZoom, setCurrentZoom] = useState(defaultZoom);
 
     useEffect(() => {
         if (error) setShowSSLModal(true);
@@ -365,10 +423,6 @@ const HomeView = ({ manager, onTabChange }) => {
     const lat = parseFloat(data?.gps?.lat) || 36.78;
     const lon = parseFloat(data?.gps?.lon) || 14.54;
     const coords = [lat, lon];
-
-    // Calcola il livello di zoom adattivo (18 all'ancora per precisione, 15 in navigazione per un raggio di 1-1.5 miglia)
-    const isAnchored = data?.anchor?.status && data.anchor.status !== 'MOVING';
-    const defaultZoom = isAnchored ? 18 : 11;
 
     /** Calcola il centro dinamico per gli anelli di distanza (Ancora o Barca) */
     const rangeRingsCenter = useMemo(() => {
@@ -499,7 +553,8 @@ const HomeView = ({ manager, onTabChange }) => {
             </div>
 
             {/* --- SEZIONE 4: MAPPA SATELLITARE CON STRUTTURA COCKPIT NAUTICO --- */}
-            <div className="space-y-3 pb-22 flex flex-col items-center w-full">
+            {/* Corretto pb-22 in pb-24 per garantire un margine inferiore di 96px rispetto alla barra di navigazione */}
+            <div className="space-y-3 pb-24 flex flex-col items-center w-full">
                 {!isMapFull && (
                     <div className="w-[80%] bg-[#121212]/90 backdrop-blur-xl border border-white/10 p-4 rounded-[2rem] shadow-2xl flex flex-col gap-2.5 text-white">
                         
@@ -645,7 +700,7 @@ const HomeView = ({ manager, onTabChange }) => {
                             maxNativeZoom={18}
                             errorTileUrl=""
                         />
-                        {/* Passiamo setIsMapFull qui dentro */}
+                        {/* Passiamo la callback di zoom a MapPlugins */}
                         <MapPlugins
                             coords={coords}
                             trail={smoothedTrail}
@@ -653,7 +708,8 @@ const HomeView = ({ manager, onTabChange }) => {
                             setAutoFollow={setAutoFollow}
                             isMapFull={isMapFull}
                             setIsMapFull={setIsMapFull}
-                            defaultZoom={defaultZoom} // <--- COMPILA IL CO-ORDINAMENTO DELLO ZOOM
+                            defaultZoom={defaultZoom}
+                            onZoomChange={setCurrentZoom}
                         />
 
                         {/* CERCHIO DI SICUREZZA PROVVISORIO (Arancione, visibile in fase di LEARNING o SETTLING) */}
@@ -758,16 +814,16 @@ const HomeView = ({ manager, onTabChange }) => {
                                                 }}
                                                 interactive={false}
                                             />
-                                            {/* Triangolo rotante orientato al COG con colore unificato */}
+                                            {/* Triangolo rotante orientato al COG con dimensione da zoom */}
                                             <Marker
                                                 position={[v.lat, v.lon]}
-                                                icon={movingVesselIcon(v.cog, vesselColor)}
+                                                icon={movingVesselIcon(v.cog, vesselColor, currentZoom)}
                                                 interactive={false}
                                             />
-                                            {/* Etichetta ARPA con Nome, Velocità, CPA e Incrocio con colore unificato */}
+                                            {/* Etichetta ARPA con Emoji, Nome, Velocità e CPA proporzionata allo zoom */}
                                             <Marker
                                                 position={[v.lat, v.lon]}
-                                                icon={movingVesselLabelIcon(v.name, v.sog, v.cpa, v.tcpa, v.crossDir, v.risk, v.age, vesselColor)}
+                                                icon={movingVesselLabelIcon(v.name, v.sog, v.cpa, v.tcpa, v.crossDir, v.risk, v.age, vesselColor, v.type, currentZoom)}
                                                 interactive={false}
                                             />
                                         </React.Fragment>
@@ -779,10 +835,10 @@ const HomeView = ({ manager, onTabChange }) => {
                                                 icon={stationaryVesselIcon(v.risk)}
                                                 interactive={false}
                                             />
-                                            {/* Nome barca e diagnostica di prossimità con ritardo segnale RIT integrato ad alto contrasto */}
+                                            {/* Nome barca all'ancora con Emoji proporzionata allo zoom */}
                                             <Marker
                                                 position={[v.lat, v.lon]}
-                                                icon={stationaryVesselLabelIcon(v.name, v.risk, v.riskMsg, v.dist, v.age)}
+                                                icon={stationaryVesselLabelIcon(v.name, v.risk, v.riskMsg, v.dist, v.age, v.type, currentZoom)}
                                                 interactive={false}
                                             />
                                             {/* Se stiamo salendo sull'ancora del vicino, disegna la sua ancora in rosso e il raggio di swing */}
