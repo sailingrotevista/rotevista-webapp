@@ -74,7 +74,7 @@ const stationaryVesselIcon = (risk) => {
     });
 };
 
-/** Icona testuale trasparente ad alto contrasto - Mostra il ritardo segnale RIT se la trasmissione supera i 2 minuti */
+/** Icona testuale trasparente ad alto contrasto per barche all'ancora - Testi ingranditi (13px / 9.5px) */
 const stationaryVesselLabelIcon = (name, risk, riskMsg, dist, ageSec) => {
     let color = "rgba(225, 225, 225, 0.85)"; // Grigio di default
     let extraTxt = "";
@@ -98,13 +98,13 @@ const stationaryVesselLabelIcon = (name, risk, riskMsg, dist, ageSec) => {
     return new L.DivIcon({
         html: `
             <div style="display: flex; flex-direction: column; align-items: flex-start; justify-content: center; line-height: 1.15; white-space: nowrap; text-transform: uppercase;">
-                <span style="font-size: 11px; font-weight: 900; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;">${name}</span>
-                ${extraTxt ? `<span style="font-size: 7.5px; font-weight: 900; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; margin-top: 1px;">(${extraTxt})</span>` : ""}
+                <span style="font-size: 13px; font-weight: 900; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;">${name}</span>
+                ${extraTxt ? `<span style="font-size: 9.5px; font-weight: 900; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; margin-top: 1px;">(${extraTxt})</span>` : ""}
             </div>
         `,
         className: 'ais-vessel-label',
-        iconSize: [300, 32],
-        iconAnchor: [-7, 16]
+        iconSize: [350, 40],
+        iconAnchor: [-9, 20]
     });
 };
 
@@ -127,10 +127,8 @@ const movingVesselIcon = (cog, color) => {
     });
 };
 
-/** Icona testuale per bersagli in movimento con colore unificato coordinato */
+/** Icona testuale per bersagli in movimento - Struttura a 3 righe (Nome 13px, Velocità 9.5px, Incrocio 13px) */
 const movingVesselLabelIcon = (name, sog, cpa, tcpa, crossDir, risk, ageSec, color) => {
-    let subTxt = "";
-
     // Se il segnale AIS reale è obsoleto (oltre 2 minuti), mostriamo il ritardo
     let ritTxt = "";
     if (ageSec >= 120) {
@@ -138,24 +136,26 @@ const movingVesselLabelIcon = (name, sog, cpa, tcpa, crossDir, risk, ageSec, col
         ritTxt = ` • RIT: ${ageMin} MIN`;
     }
 
+    let speedLine = `${sog} kn${ritTxt}`;
+    let cpaLine = "";
+
     if (risk === "RED") {
-        subTxt = `${sog} kn${ritTxt} • COLLISIONE! - CPA: ${cpa}m`;
+        cpaLine = `COLLISIONE! - CPA: ${cpa}m`;
     } else if (tcpa !== null && tcpa >= 0) {
-        subTxt = `${sog} kn${ritTxt} • CPA: ${cpa}m (${crossDir}) IN ${Math.round(tcpa)} MIN`;
-    } else {
-        subTxt = `${sog} kn${ritTxt}`;
+        cpaLine = `CPA: ${cpa}m (${crossDir}) IN ${Math.round(tcpa)} MIN`;
     }
 
     return new L.DivIcon({
         html: `
             <div style="display: flex; flex-direction: column; align-items: flex-start; justify-content: center; line-height: 1.15; white-space: nowrap; text-transform: uppercase;">
-                <span style="font-size: 11px; font-weight: 900; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;">${name}</span>
-                <span style="font-size: 7.5px; font-weight: 900; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; margin-top: 1px;">${subTxt}</span>
+                <span style="font-size: 13px; font-weight: 900; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;">${name}</span>
+                <span style="font-size: 9.5px; font-weight: 900; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; margin-top: 1px;">${speedLine}</span>
+                ${cpaLine ? `<span style="font-size: 13px; font-weight: 900; color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; margin-top: 2px;">${cpaLine}</span>` : ""}
             </div>
         `,
         className: 'ais-moving-label',
-        iconSize: [300, 32],
-        iconAnchor: [-10, 16]
+        iconSize: [350, 56],
+        iconAnchor: [-12, 28]
     });
 };
 
@@ -747,13 +747,15 @@ const HomeView = ({ manager, onTabChange }) => {
 
                                     {isMoving ? (
                                         <React.Fragment>
-                                            {/* Vettore COG proiettato a 15 minuti - Colore unificato */}
+                                            {/* Vettore COG proiettato a 15 minuti - Colore unificato via pathOptions */}
                                             <Polyline
                                                 positions={[[v.lat, v.lon], getVectorCoords(v.lat, v.lon, v.cog, v.sog)]}
-                                                color={vesselColor}
-                                                weight={3.0}
-                                                opacity={0.85}
-                                                dashArray="6, 6"
+                                                pathOptions={{
+                                                    color: vesselColor,
+                                                    weight: 3.0,
+                                                    opacity: 0.85,
+                                                    dashArray: "6, 6"
+                                                }}
                                                 interactive={false}
                                             />
                                             {/* Triangolo rotante orientato al COG con colore unificato */}
