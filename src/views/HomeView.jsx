@@ -368,7 +368,7 @@ const HomeView = ({ manager, onTabChange }) => {
 
     // Calcola il livello di zoom adattivo (18 all'ancora per precisione, 15 in navigazione per un raggio di 1-1.5 miglia)
     const isAnchored = data?.anchor?.status && data.anchor.status !== 'MOVING';
-    const defaultZoom = isAnchored ? 18 : 15;
+    const defaultZoom = isAnchored ? 18 : 11;
 
     /** Calcola il centro dinamico per gli anelli di distanza (Ancora o Barca) */
     const rangeRingsCenter = useMemo(() => {
