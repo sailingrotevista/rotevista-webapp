@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [react()],
   base: './',
   build: {
-    outDir: 'dist', // Impostato l'output standard su 'dist' per preservare la cartella 'public'
-    emptyOutDir: true,
+    outDir: 'public', // Output diretto dentro public per Signal K
+    emptyOutDir: false, // CRUCIALE: impedisce a Vite di cancellare AppIcon.png dentro public/
   }
 })
