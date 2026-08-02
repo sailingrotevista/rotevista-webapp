@@ -17,9 +17,9 @@
     "marine"
   ],
   "signalk": {
-    "appIcon": "./AppIcon.png",
-    "displayName": "Rotevista Master Dash"
-  },
+      "appIcon": "public/AppIcon.png",
+      "displayName": "Rotevista Master Dash"
+    },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
