@@ -1,0 +1,22 @@
+{
+  "short_name": "Rotevista",
+  "name": "Rotevista Master Dash",
+  "icons": [
+    {
+      "src": "./AppIcon.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./AppIcon.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#121212",
+  "theme_color": "#121212"
+}
