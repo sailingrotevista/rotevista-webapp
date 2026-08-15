@@ -793,7 +793,7 @@ const HomeView = ({ manager, onTabChange }) => {
                         {/* BERSAGLI AIS FILTRATI (Raggio 5M, soglia movimento a 0.3 nodi con analisi dei rischi e traccia storica) */}
                         {(data?.environment?.ais_targets || []).map((v) => {
                             // Soglia movimento allineata al backend (0.3 nodi)
-                            const isMoving = v.sog > 0.3;
+                            const isMoving = !v.isAnchored && (v.sog > 0.5);
                             
                             // Colore dinamico unificato per Vettore, Triangolo ed Etichetta
                             const vesselColor = getVesselStatusColor(v);
