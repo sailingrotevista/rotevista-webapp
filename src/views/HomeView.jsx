@@ -89,13 +89,9 @@ const stationaryVesselIcon = (risk) => {
     });
 };
 
-/** Funzione di supporto centralizzata per il colore univoco di Vettore, Freccia ed Etichetta */
+/** Colore semaforico univoco pilotato al 100% dal backend Node-RED (Single Source of Truth) */
 const getVesselStatusColor = (v) => {
-    if (v.risk === "RED") return "#ef4444"; // Rosso: Pericolo / Collisione
-    if (v.tcpa !== null && v.tcpa >= 0) return "#f97316"; // Arancione: Incrocio imminente <= 0.5M
-    if (v.tcpa !== null && v.tcpa < 0) return "#22c55e"; // Verde: Rotta sicura / In allontanamento
-    if (v.risk === "ORANGE") return "#f97316"; // Arancione: Rischio rotazione/swing
-    return "rgba(225, 225, 225, 0.85)"; // Grigio di default
+    return v.color || "rgba(225, 225, 225, 0.85)";
 };
 
 /** Calcola le dimensioni di icone e testi in base al livello di zoom della mappa */
@@ -178,7 +174,7 @@ const stationaryVesselLabelIcon = (name, risk, riskMsg, dist, ageSec, type, zoom
 };
 
 /** Icona testuale per bersagli in movimento con Emoji e blocco a 2/3 righe con scala dinamica da zoom */
-const movingVesselLabelIcon = (name, sog, cpa, tcpa, crossDir, risk, ageSec, color, type, zoom) => {
+const movingVesselLabelIcon = (name, sog, cpa, tcpa, crossDir, risk, riskMsg, ageSec, color, type, zoom) => {
     let ritTxt = "";
     if (ageSec >= 120) {
         let ageMin = Math.round(ageSec / 60);
@@ -189,7 +185,10 @@ const movingVesselLabelIcon = (name, sog, cpa, tcpa, crossDir, risk, ageSec, col
     let cpaLine = "";
 
     if (risk === "RED") {
-        cpaLine = `COLLISIONE! - CPA: ${cpa}m`;
+        let alertTitle = riskMsg || "COLLISIONE!";
+        let dirTxt = crossDir ? ` (${crossDir})` : "";
+        let timeTxt = (tcpa !== null && tcpa >= 0) ? ` IN ${Math.round(tcpa)} MIN` : "";
+        cpaLine = `🚨 ${alertTitle} - CPA: ${cpa}m${dirTxt}${timeTxt}`;
     } else if (tcpa !== null && tcpa >= 0) {
         cpaLine = `CPA: ${cpa}m (${crossDir}) IN ${Math.round(tcpa)} MIN`;
     }
@@ -628,39 +627,66 @@ const HomeView = ({ manager, onTabChange }) => {
                             </div>
                         )}
 
-                        {/* RIGA 2: Griglia delle Distanze di Sicurezza (Attiva solo in rada) */}
-                        {data?.anchor?.status && data?.anchor?.status !== 'MOVING' && (
+                        {/* RIGA 2: Griglia a 3 Colonne (Distanze in rada o Anteprima di calata) */}
+                        {data?.anchor?.status && (data.anchor.status !== 'MOVING' || (data.anchor.status === 'MOVING' && data.anchor.radius > 0)) && (
                             <div className="grid grid-cols-3 gap-2 py-2 border-t border-b border-white/5 text-center bg-white/[0.01] rounded-2xl">
-                                <div className="flex flex-col">
-                                    <span className="text-[7.5px] font-black uppercase text-gray-400 tracking-wider">Distanza</span>
-                                    <span className={`text-sm font-black font-mono mt-0.5 ${
-                                        (data.anchor.status === 'LEARNING' || data.anchor.status === 'SETTLING') ? 'text-orange-500' : 'text-cyan-400'
-                                    }`}>
-                                        {data.anchor.boat_dist?.toFixed(1) || '0.0'}<span className="text-[10px] font-bold text-gray-400 ml-0.5">m</span>
-                                    </span>
-                                </div>
-                                <div className="flex flex-col border-l border-r border-white/5">
-                                    <span className="text-[7.5px] font-black uppercase text-gray-400 tracking-wider">Raggio Guardia</span>
-                                    <span className={`text-sm font-black font-mono mt-0.5 ${
-                                        (data.anchor.status === 'LEARNING' || data.anchor.status === 'SETTLING') ? 'text-orange-500' : 'text-white'
-                                    }`}>
-                                        {data.anchor.radius?.toFixed(0) || '0'}<span className="text-[10px] font-bold text-gray-400 ml-0.5">m</span>
-                                    </span>
-                                </div>
-                                <div className="flex flex-col font-mono">
-                                    <span className="text-[7.5px] font-black uppercase text-gray-400 tracking-wider">Precisione</span>
-                                    <span className={`text-sm font-black mt-0.5 ${
-                                        (data.anchor.status === 'LEARNING' || data.anchor.status === 'SETTLING') ? 'text-orange-400' : 'text-cyan-400'
-                                    }`}>
-                                        {(data.anchor.status === 'LEARNING' || data.anchor.status === 'SETTLING')
-                                            ? 'Calcolo...'
-                                            : (data.anchor.std_dev > 0 ? `±${data.anchor.std_dev.toFixed(1)}m` : '±0.0m')}
-                                    </span>
-                                </div>
+                                {data.anchor.status === 'MOVING' ? (
+                                    // Visualizzazione Anteprima Calata (In Avvicinamento)
+                                    <>
+                                        <div className="flex flex-col">
+                                            <span className="text-[7.5px] font-black uppercase text-gray-400 tracking-wider">Distanza</span>
+                                            <span className="text-sm font-black font-mono mt-0.5 text-gray-500">--</span>
+                                        </div>
+                                        <div className="flex flex-col border-l border-r border-white/5">
+                                            <span className="text-[7.5px] font-black uppercase text-cyan-400 tracking-wider">Raggio Previsto</span>
+                                            <span className="text-sm font-black font-mono mt-0.5 text-cyan-400">
+                                                {data.anchor.radius?.toFixed(0) || '0'}<span className="text-[10px] font-bold text-gray-400 ml-0.5">m</span>
+                                            </span>
+                                        </div>
+                                        <div className="flex flex-col font-mono">
+                                            <span className="text-[7.5px] font-black uppercase text-gray-400 tracking-wider">Spazio in Baia</span>
+                                            <span className={`text-sm font-black mt-0.5 ${
+                                                (data.anchor.description && data.anchor.description.includes("Ristretto")) ? 'text-orange-400 animate-pulse' : 'text-green-400'
+                                            }`}>
+                                                {(data.anchor.description && data.anchor.description.includes("Ristretto")) ? 'OCCUPATO' : 'LIBERO'}
+                                            </span>
+                                        </div>
+                                    </>
+                                ) : (
+                                    // Visualizzazione Standard di Ancoraggio (In Rada)
+                                    <>
+                                        <div className="flex flex-col">
+                                            <span className="text-[7.5px] font-black uppercase text-gray-400 tracking-wider">Distanza</span>
+                                            <span className={`text-sm font-black font-mono mt-0.5 ${
+                                                (data.anchor.status === 'LEARNING' || data.anchor.status === 'SETTLING') ? 'text-orange-500' : 'text-cyan-400'
+                                            }`}>
+                                                {data.anchor.boat_dist?.toFixed(1) || '0.0'}<span className="text-[10px] font-bold text-gray-400 ml-0.5">m</span>
+                                            </span>
+                                        </div>
+                                        <div className="flex flex-col border-l border-r border-white/5">
+                                            <span className="text-[7.5px] font-black uppercase text-gray-400 tracking-wider">Raggio Guardia</span>
+                                            <span className={`text-sm font-black font-mono mt-0.5 ${
+                                                (data.anchor.status === 'LEARNING' || data.anchor.status === 'SETTLING') ? 'text-orange-500' : 'text-white'
+                                            }`}>
+                                                {data.anchor.radius?.toFixed(0) || '0'}<span className="text-[10px] font-bold text-gray-400 ml-0.5">m</span>
+                                            </span>
+                                        </div>
+                                        <div className="flex flex-col font-mono">
+                                            <span className="text-[7.5px] font-black uppercase text-gray-400 tracking-wider">Precisione</span>
+                                            <span className={`text-sm font-black mt-0.5 ${
+                                                (data.anchor.status === 'LEARNING' || data.anchor.status === 'SETTLING') ? 'text-orange-400' : 'text-cyan-400'
+                                            }`}>
+                                                {(data.anchor.status === 'LEARNING' || data.anchor.status === 'SETTLING')
+                                                    ? 'Calcolo...'
+                                                    : (data.anchor.std_dev > 0 ? `±${data.anchor.std_dev.toFixed(1)}m` : '±0.0m')}
+                                            </span>
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         )}
 
-                        {/* RIGA 3: Informazioni Ambientali, Volvo e Note di Bassa Fiducia */}
+                        {/* RIGA 3: Informazioni Ambientali, Volvo, SOG e Note */}
                         <div className="flex justify-between items-center text-[10px] font-bold text-gray-300 font-mono leading-none">
                             {/* Dati Fisici del fondale (Fondale & Catena) */}
                             <div className="flex gap-4">
@@ -668,13 +694,17 @@ const HomeView = ({ manager, onTabChange }) => {
                                     <span>Fondale: <span className="text-white font-black">{data.anchor.depth.toFixed(1)}m</span></span>
                                 )}
                                 {data?.anchor?.chain > 0 && (
-                                    <span>Catena: <span className="text-white font-black">{data.anchor.chain.toFixed(0)}m</span></span>
+                                    <span>{data?.anchor?.status === 'MOVING' ? 'Catena Suggerita:' : 'Catena:'} <span className="text-white font-black">{data.anchor.chain.toFixed(0)}m</span></span>
                                 )}
                             </div>
 
-                            {/* Integrazione Dinamica Allarmi/Volvo Engine/Bassa Fiducia */}
+                            {/* Integrazione Dinamica Allarmi/Volvo Engine/Bassa Fiducia/SOG */}
                             <div className="flex items-center">
-                                {data?.anchor?.engine_on ? (
+                                {data?.anchor?.status === 'MOVING' ? (
+                                    <span className="text-cyan-400 font-bold">
+                                        SOG: {data?.gps?.speed ? (parseFloat(data.gps.speed) * 1.94384).toFixed(1) : (data?.gps?.sog?.toFixed(1) || '0.0')} kn
+                                    </span>
+                                ) : data?.anchor?.engine_on ? (
                                     <span className="text-yellow-400 font-black animate-pulse flex items-center gap-1">
                                         ⚡ Volvo: {data.anchor.engine_v?.toFixed(1)}V {data.anchor.score > 0 ? `[Salpamento: ${data.anchor.score}/70]` : ''}
                                     </span>
@@ -723,6 +753,23 @@ const HomeView = ({ manager, onTabChange }) => {
                             defaultZoom={defaultZoom}
                             onZoomChange={setCurrentZoom}
                         />
+
+                        {/* CERCHIO ANTEPRIMA CALATA / GHOST FOOTPRINT (Visibile in avvicinamento alla rada a < 4kn) */}
+                        {data?.anchor?.lat && data?.anchor?.lon && data.anchor.radius > 0 &&
+                         data.anchor.status === 'MOVING' && (
+                            <Circle
+                                center={[data.anchor.lat, data.anchor.lon]}
+                                radius={data.anchor.radius}
+                                pathOptions={{
+                                    color: (data.anchor.description && data.anchor.description.includes("Ristretto")) ? '#f97316' : '#22d3ee',
+                                    fillColor: '#22d3ee',
+                                    fillOpacity: 0.04,
+                                    weight: 1.5,
+                                    dashArray: '4, 8',
+                                    interactive: false
+                                }}
+                            />
+                        )}
 
                         {/* CERCHIO DI SICUREZZA PROVVISORIO (Arancione, visibile in fase di LEARNING o SETTLING) */}
                         {data?.anchor?.lat && data?.anchor?.lon && data.anchor.radius > 0 &&
@@ -790,12 +837,10 @@ const HomeView = ({ manager, onTabChange }) => {
                             );
                         })}
 
-                        {/* BERSAGLI AIS FILTRATI (Raggio 5M, soglia movimento a 0.3 nodi con analisi dei rischi e traccia storica) */}
+                        {/* BERSAGLI AIS FILTRATI (Raggio 20M, colore e cinematica pilotati dal backend) */}
                         {(data?.environment?.ais_targets || []).map((v) => {
-                            // Soglia movimento allineata al backend (0.3 nodi)
-                            const isMoving = !v.isAnchored && (v.sog > 0.5);
-                            
-                            // Colore dinamico unificato per Vettore, Triangolo ed Etichetta
+                            // Stato cinetico e colore ereditati direttamente dal backend Node-RED
+                            const isMoving = v.isMoving !== undefined ? v.isMoving : (!v.isAnchored && v.sog >= 0.3);
                             const vesselColor = getVesselStatusColor(v);
 
                             return (
@@ -831,10 +876,10 @@ const HomeView = ({ manager, onTabChange }) => {
                                                 icon={movingVesselIcon(v.cog, vesselColor, currentZoom)}
                                                 interactive={false}
                                             />
-                                            {/* Etichetta ARPA con Emoji, Nome, Velocità e CPA proporzionata allo zoom */}
+                                            {/* Etichetta ARPA con Emoji, Nome, Velocità, CPA e Allarmi proporzionata allo zoom */}
                                             <Marker
                                                 position={[v.lat, v.lon]}
-                                                icon={movingVesselLabelIcon(v.name, v.sog, v.cpa, v.tcpa, v.crossDir, v.risk, v.age, vesselColor, v.type, currentZoom)}
+                                                icon={movingVesselLabelIcon(v.name, v.sog, v.cpa, v.tcpa, v.crossDir, v.risk, v.riskMsg, v.age, vesselColor, v.type, currentZoom)}
                                                 interactive={false}
                                             />
                                         </React.Fragment>

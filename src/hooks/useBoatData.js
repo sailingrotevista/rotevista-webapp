@@ -88,54 +88,65 @@ export const useBoatData = () => {
     };
 
     /**
-         * 4. CICLI DI AGGIORNAMENTO (Lifecycle con sospensione intelligente e risparmio energetico)
-         */
+     * 4. CICLI DI AGGIORNAMENTO (Lifecycle a prova di ibernazione Android/Chrome)
+     */
 
-        // Effetto Polling con Watchdog di Visibilità (Page Visibility API)
-        useEffect(() => {
-            let intervalId = null;
+    // Effetto Polling con Risveglio Multi-Evento (Visibility, Pageshow, Focus, Online)
+    useEffect(() => {
+        let intervalId = null;
 
-            const handleVisibilityChange = () => {
-                // Pulisce SEMPRE l'intervallo precedente per evitare timer duplicati in memoria
-                if (intervalId) {
-                    clearInterval(intervalId);
-                    intervalId = null;
-                }
+        const restartSync = () => {
+            if (intervalId) {
+                clearInterval(intervalId);
+                intervalId = null;
+            }
 
-                if (document.visibilityState === 'visible') {
-                    // Al risveglio scarica subito i dati freschi e riavvia il timer da 5s
+            if (!document.hidden) {
+                // Scarica subito i dati e avvia il polling continuo
+                fetchData();
+                intervalId = setInterval(fetchData, 5000);
+            }
+        };
+
+        // Primo avvio
+        restartSync();
+
+        // Ascolto combinato di tutti gli eventi di riattivazione su Android/iOS
+        document.addEventListener('visibilitychange', restartSync);
+        window.addEventListener('pageshow', restartSync);
+        window.addEventListener('focus', restartSync);
+        window.addEventListener('online', restartSync);
+        
+        return () => {
+            if (intervalId) clearInterval(intervalId);
+            document.removeEventListener('visibilitychange', restartSync);
+            window.removeEventListener('pageshow', restartSync);
+            window.removeEventListener('focus', restartSync);
+            window.removeEventListener('online', restartSync);
+        };
+    }, []);
+
+    // Effetto Watchdog: Calcola secondi e auto-rigenera la connessione se bloccata (> 8s)
+    useEffect(() => {
+        const interval = setInterval(() => {
+            if (document.hidden) return;
+
+            if (lastUpdate) {
+                const diff = Math.floor((new Date() - lastUpdate) / 1000);
+                setSecondsSinceLastUpdate(diff);
+                setIsDataStale(diff > 30);
+
+                // Auto-guarigione attiva: se la pagina è visibile ma non riceve dati da oltre 8s, forza un fetch
+                if (diff >= 8 && !isUpdating) {
                     fetchData();
-                    intervalId = setInterval(fetchData, 5000);
                 }
-            };
-
-            // Esegue il primo controllo e avvio all'apertura
-            handleVisibilityChange();
-
-            // Ascolta i cambi di visibilità del browser (blocco schermo, minimizzazione, cambio scheda)
-            document.addEventListener('visibilitychange', handleVisibilityChange);
-            
-            return () => {
-                if (intervalId) clearInterval(intervalId);
-                document.removeEventListener('visibilitychange', handleVisibilityChange);
-            };
-        }, []);
-
-        // Effetto Watchdog: Aggiorna il contatore dei secondi "Dati ricevuti da X secondi"
-        useEffect(() => {
-            const interval = setInterval(() => {
-                // Se la pagina è in background o lo schermo è spento, ferma il ricalcolo per congelare la CPU
-                if (document.hidden) return;
-
-                if (lastUpdate) {
-                    const diff = Math.floor((new Date() - lastUpdate) / 1000);
-                    setSecondsSinceLastUpdate(diff);
-                    setIsDataStale(diff > 30);
-                }
-            }, 1000);
-            
-            return () => clearInterval(interval);
-        }, [lastUpdate]);
+            } else {
+                fetchData();
+            }
+        }, 1000);
+        
+        return () => clearInterval(interval);
+    }, [lastUpdate, isUpdating]);
 
     // Calcolo del colore di stato (Verde, Arancio, Rosso)
     const statusColor = secondsSinceLastUpdate < 15 ? 'bg-green-500'
