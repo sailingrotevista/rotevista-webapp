@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
 /**
  * 1. GESTIONE DINAMICA DELL'INDIRIZZO IP
@@ -33,13 +33,22 @@ export const useBoatData = () => {
     const apiUrl = `${baseUrl}/api/boat`;
     const controlUrl = `${baseUrl}/api/boat/control`;
 
+    // Lock di rete per evitare richieste sovrapposte
+    const isFetchingRef = useRef(false);
+
     /**
-     * 2. RECUPERO DATI (GET)
-     * Interroga periodicamente l'API di Node-RED
+     * 2. RECUPERO DATI (GET CON TIMEOUT E SEMAFORO ANTI-SOVRAPPOSIZIONE)
      */
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
+        if (isFetchingRef.current) return;
+        isFetchingRef.current = true;
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000); // Timeout a 4 secondi
+
         try {
-            const response = await fetch(apiUrl);
+            const response = await fetch(apiUrl, { signal: controller.signal });
+            clearTimeout(timeoutId);
             
             if (!response.ok) {
                 throw new Error(`Errore Server: ${response.status}`);
@@ -50,16 +59,21 @@ export const useBoatData = () => {
             setData(jsonData);
             setLastUpdate(new Date());
             setIsDataStale(false);
-            setError(null);      // Reset errore: la connessione funziona
-            setIsUpdating(false); // Spegne lo spinner se era attivo
+            setError(null);       // Reset errore: connessione OK
+            setIsUpdating(false);
             
         } catch (e) {
-            console.error("Fetch Error:", e);
-            setError(e.message);  // Questo triggera la modale SSL in HomeView
+            clearTimeout(timeoutId);
+            if (e.name !== 'AbortError') {
+                console.error("Fetch Error:", e);
+                setError(e.message);
+            }
             setIsDataStale(true);
             setIsUpdating(false);
+        } finally {
+            isFetchingRef.current = false;
         }
-    };
+    }, [apiUrl]);
 
     /**
      * 3. INVIO COMANDI (POST)
@@ -126,7 +140,7 @@ export const useBoatData = () => {
         };
     }, []);
 
-    // Effetto Watchdog: Calcola secondi e auto-rigenera la connessione se bloccata (> 8s)
+    // Effetto Watchdog: Calcola secondi e auto-rigenera la connessione in sicurezza
     useEffect(() => {
         const interval = setInterval(() => {
             if (document.hidden) return;
@@ -136,17 +150,17 @@ export const useBoatData = () => {
                 setSecondsSinceLastUpdate(diff);
                 setIsDataStale(diff > 30);
 
-                // Auto-guarigione attiva: se la pagina è visibile ma non riceve dati da oltre 8s, forza un fetch
-                if (diff >= 8 && !isUpdating) {
+                // Auto-guarigione protetta da semaforo se non si ricevono dati da oltre 8 secondi
+                if (diff >= 8 && !isUpdating && !isFetchingRef.current) {
                     fetchData();
                 }
-            } else {
+            } else if (!isFetchingRef.current) {
                 fetchData();
             }
         }, 1000);
         
         return () => clearInterval(interval);
-    }, [lastUpdate, isUpdating]);
+    }, [lastUpdate, isUpdating, fetchData]);
 
     // Calcolo del colore di stato (Verde, Arancio, Rosso)
     const statusColor = secondsSinceLastUpdate < 15 ? 'bg-green-500'
