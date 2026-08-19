@@ -1,19 +1,15 @@
 /* --- File: src/views/HomeView.jsx --- */
 import React, { useEffect, useState, useMemo } from 'react';
-// Aggiunto Circle agli import di react-leaflet
 import { MapContainer, TileLayer, Marker, Polyline, Circle, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import {
-  Battery, Power, Thermometer, Droplet, Flame,
-  Shirt, Snowflake, Sofa, Navigation, Plus, Minus, Target,
-  AlertTriangle, ChevronRight, Maximize2, Minimize2, Anchor // Aggiunto Anchor
+    Battery, Power, Thermometer, Droplet, Flame,
+    Shirt, Snowflake, Sofa, Navigation, Plus, Minus, Target,
+    AlertTriangle, ChevronRight, Maximize2, Minimize2, Anchor
 } from 'lucide-react';
 
 // ============================================================
 // 1. CONFIGURAZIONE ICONE (Barca e Ancora)
-// MEMO OTTIMIZZAZIONE FUTURA: Se in rade con molti bersagli AIS (>20)
-// si notano micro-lag durante lo zoom/pan della mappa, memoizzare
-// l'istanziazione di L.DivIcon per evitare di ricreare oggetti DOM ad ogni render.
 // ============================================================
 const boatIcon = new L.DivIcon({
     html: `<div style="font-size: 20px; opacity: 0.8; filter: drop-shadow(0 0 5px black);">⛵</div>`,
@@ -33,19 +29,19 @@ const myAnchorMarkerIcon = (isThreatened) => new L.DivIcon({
 /** Icona dell'ancora sommersa del vicino (disegnata in rosso, più grande e con lampeggio ad impulsi di Tailwind) */
 const nearbyVesselAnchorIcon = new L.DivIcon({
     html: `<div style="font-size: 18px; color: #ef4444; filter: drop-shadow(0 0 3px black);">⚓&#xFE0E;</div>`,
-    className: 'nearby-anchor-marker animate-pulse', // Lampeggio pulsante fluido di Tailwind
+    className: 'nearby-anchor-marker animate-pulse',
     iconSize: [20, 20],
     iconAnchor: [10, 10]
 });
 
 const formatNautic = (val, isLat) => {
-        if (!val) return '';
-        const hemi = isLat ? (val >= 0 ? "N" : "S") : (val >= 0 ? "E" : "W");
-        const absVal = Math.abs(val);
-        const deg = Math.floor(absVal);
-        const min = ((absVal - deg) * 60).toFixed(4);
-        return `${deg} ${min}${hemi}`;
-    };
+    if (!val) return '';
+    const hemi = isLat ? (val >= 0 ? "N" : "S") : (val >= 0 ? "E" : "W");
+    const absVal = Math.abs(val);
+    const deg = Math.floor(absVal);
+    const min = ((absVal - deg) * 60).toFixed(4);
+    return `${deg} ${min}${hemi}`;
+};
 
 /** Calcola la coordinata Ovest (270°) esatta sul bordo del cerchio per posizionare le etichette */
 const getWestLabelCoords = (center, radius) => {
@@ -75,12 +71,12 @@ const getVectorCoords = (lat, lon, cog, sog) => {
     return [projectedLat, projectedLon];
 };
 
-/** Icona del puntino per le barche all'ancora (proporzionata "un filo più grande" delle scritte) con colore in base al rischio */
+/** Icona del puntino per le barche all'ancora con colore in base al rischio */
 const stationaryVesselIcon = (risk) => {
-    let color = "rgba(225, 225, 225, 0.85)"; // Grigio di default
-    if (risk === "RED") color = "#ef4444"; // Rosso allarme
-    else if (risk === "ORANGE") color = "#f97316"; // Arancione allineamento/swing
-    
+    let color = "rgba(225, 225, 225, 0.85)";
+    if (risk === "RED") color = "#ef4444";
+    else if (risk === "ORANGE") color = "#f97316";
+
     return new L.DivIcon({
         html: `<div style="width: 8px; height: 8px; background-color: ${color}; border-radius: 50%; border: 1.2px solid rgba(0, 0, 0, 0.6); box-shadow: 0 0 3px rgba(0,0,0,0.5);"></div>`,
         className: 'stationary-vessel-marker',
@@ -97,14 +93,11 @@ const getVesselStatusColor = (v) => {
 /** Calcola le dimensioni di icone e testi in base al livello di zoom della mappa */
 const getAisSizes = (zoom) => {
     if (zoom >= 18) {
-        // Zoom In (Molto vicino) -> Ingrandito (15px / 11px)
         return { nameSize: "15px", subSize: "11px", emojiSize: "26px", markerSize: 20, iconSize: [400, 64], iconAnchor: [-14, 32] };
     }
     if (zoom <= 14) {
-        // Zoom Panoramico (Lontano) -> Ridotto (10px / 7.5px)
         return { nameSize: "10px", subSize: "7.5px", emojiSize: "16px", markerSize: 12, iconSize: [280, 42], iconAnchor: [-8, 21] };
     }
-    // Zoom Normale (15 - 17) -> Standard (13px / 9.5px)
     return { nameSize: "13px", subSize: "9.5px", emojiSize: "22px", markerSize: 16, iconSize: [350, 56], iconAnchor: [-12, 28] };
 };
 
@@ -122,16 +115,16 @@ const movingVesselIcon = (cog, color, zoom) => {
 /** Funzione per convertire il codice AIS del tipo di nave nell'emoji corrispondente */
 const getShipTypeEmoji = (type) => {
     const t = parseInt(type) || 0;
-    if (t === 36) return "⛵"; // Vela
-    if (t === 37) return "🛥️"; // Diporto a motore
-    if (t === 30) return "🐟"; // Peschereccio
-    if (t >= 50 && t <= 59) return "👨🏻‍✈️"; // Pilota / Supporto
-    if (t === 31 || t === 32 || t === 52) return "🚜"; // Rimorchiatore
-    if (t >= 60 && t <= 69) return "⛴️"; // Passeggeri / Traghetto
-    if (t >= 70 && t <= 79) return "📦"; // Cargo / Container / Bulk
-    if (t >= 80 && t <= 89) return "🛢️"; // Petroliera / Tanker
-    if (t >= 40 && t <= 49) return "🚤"; // Unità Veloce HSC
-    return ""; // Default
+    if (t === 36) return "⛵";
+    if (t === 37) return "🛥️";
+    if (t === 30) return "🐟";
+    if (t >= 50 && t <= 59) return "👨🏻‍✈️";
+    if (t === 31 || t === 32 || t === 52) return "🚜";
+    if (t >= 60 && t <= 69) return "⛴️";
+    if (t >= 70 && t <= 79) return "📦";
+    if (t >= 80 && t <= 89) return "🛢️";
+    if (t >= 40 && t <= 49) return "🚤";
+    return "";
 };
 
 /** Icona testuale per bersagli all'ancora con Emoji affiancata e scala dinamica da zoom */
@@ -173,7 +166,7 @@ const stationaryVesselLabelIcon = (name, risk, riskMsg, dist, ageSec, type, zoom
     });
 };
 
-/** Icona testuale per bersagli in movimento con Emoji e blocco a 2/3 righe con scala dinamica da zoom */
+/** Icona testuale per bersagli in movimento con Emoji e blocco proporzionato allo zoom */
 const movingVesselLabelIcon = (name, sog, cpa, tcpa, crossDir, risk, riskMsg, ageSec, color, type, zoom) => {
     let ritTxt = "";
     if (ageSec >= 120) {
@@ -225,11 +218,7 @@ const getShoreVoltageColor = (v) => {
     return 'text-gray-400';
 };
 
-/**
- * getShorePowerColor: Verifica il carico AC
- * - Se isShoreOn è true: Limite = Ampere * Volt
- * - Se isShoreOn è false: Limite = 1200W (Inverter)
- */
+/** Verifica il carico AC per banchina o inverter */
 const getShorePowerColor = (w, limitAmps, v, isShoreOn) => {
     const absW = Math.abs(w);
     const isGridStable = isShoreOn && v > 180;
@@ -239,7 +228,7 @@ const getShorePowerColor = (w, limitAmps, v, isShoreOn) => {
     if (usageRatio > 0.9) return 'text-red-500 animate-pulse font-black';
     if (usageRatio > 0.7) return 'text-orange-500 font-black';
     if (isGridStable && absW > 1000) return 'text-yellow-400 font-black';
-    return 'text-gray-100'; // Bianco di base se tutto OK
+    return 'text-gray-100';
 };
 
 const toggleFullscreen = () => {
@@ -256,16 +245,16 @@ const toggleFullscreen = () => {
 /** Scala cromatica universale per Pozzetti (Freezer/Frigo) */
 const getHybridTempColor = (t) => {
     if (t === undefined || t === null) return 'text-white';
-    if (t <= -12) return 'text-blue-600';     // Freezer OK
-    if (t < -4) return 'text-blue-400';       // Freezer al limite
-    if (t < 4) return 'text-orange-500';      // Zona critica (scongelamento/ghiaccio)
-    if (t <= 9) return 'text-white';          // Frigo OK
-    if (t <= 12) return 'text-orange-500';    // Frigo caldo
-    return 'text-red-500';                    // Allarme
+    if (t <= -12) return 'text-blue-600';
+    if (t < -4) return 'text-blue-400';
+    if (t < 4) return 'text-orange-500';
+    if (t <= 9) return 'text-white';
+    if (t <= 12) return 'text-orange-500';
+    return 'text-red-500';
 };
 
 // ============================================================
-// 3. PLUGIN LOGICA E CONTROLLI MAPPA (Versione Evoluta + Fullscreen Fix)
+// 3. PLUGIN LOGICA E CONTROLLI MAPPA
 // ============================================================
 const MapPlugins = ({
     coords,
@@ -275,13 +264,10 @@ const MapPlugins = ({
     isMapFull,
     setIsMapFull,
     defaultZoom,
-    onZoomChange // <--- Callback per aggiornare lo zoom dinamico
+    onZoomChange
 }) => {
     const map = useMap();
 
-    // =========================
-    // USER INTERACTION & ZOOM SYNC
-    // =========================
     const mapEvents = useMapEvents({
         dragstart: () => setAutoFollow(false),
         zoomstart: () => setAutoFollow(false),
@@ -290,60 +276,37 @@ const MapPlugins = ({
         }
     });
 
-    // Inizializza lo zoom corrente alla prima vista
     useEffect(() => {
         if (onZoomChange) onZoomChange(map.getZoom());
     }, [map, onZoomChange]);
 
-    // =========================
-    // ZOOM CONTROL
-    // =========================
     const handleZoom = (type) => {
         setAutoFollow(false);
-
         const currentZoom = map.getZoom();
-        const nextZoom = type === 'in'
-            ? currentZoom + 1
-            : currentZoom - 1;
-
+        const nextZoom = type === 'in' ? currentZoom + 1 : currentZoom - 1;
         map.setZoom(nextZoom);
         if (onZoomChange) onZoomChange(nextZoom);
     };
 
-    // =========================
-    // FULLSCREEN / RESIZE FIX
-    // =========================
     useEffect(() => {
         const id = requestAnimationFrame(() => {
             map.invalidateSize(false);
-
             if (autoFollow && coords[0] !== 0) {
-                map.setView(coords, map.getZoom(), {
-                    animate: false
-                });
+                map.setView(coords, map.getZoom(), { animate: false });
             }
         });
-
         return () => cancelAnimationFrame(id);
     }, [isMapFull, autoFollow, coords, map]);
 
-    // =========================
-    // LIVE FOLLOW CON ZOOM ADATTIVO AUTOMATICO AL CAMBIO DI STATO
-    // =========================
     useEffect(() => {
         if (autoFollow && coords[0] !== 0) {
-            map.setView(coords, defaultZoom, { // <--- ZOOM ADATTIVO DINAMICO (15 o 18)
-                animate: true,
-                duration: 0.5
-            });
+            map.setView(coords, defaultZoom, { animate: true, duration: 0.5 });
         }
-    }, [coords, autoFollow, defaultZoom, map]); // Aggiunto defaultZoom alle dipendenze
+    }, [coords, autoFollow, defaultZoom, map]);
 
     return (
         <>
-            {/* =========================
-                GPS TRAIL
-            ========================= */}
+            {/* GPS TRAIL */}
             {trail.length > 0 && (
                 <Polyline
                     positions={trail}
@@ -356,11 +319,8 @@ const MapPlugins = ({
                 />
             )}
 
-            {/* =========================
-                CONTROLLI MAPPA
-            ========================= */}
+            {/* CONTROLLI MAPPA */}
             <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-3 z-[1000]">
-
                 <button
                     onClick={() => handleZoom('in')}
                     className="w-12 h-12 rounded-2xl bg-black/50 backdrop-blur-xl border border-white/20 flex items-center justify-center text-white shadow-xl active:scale-90 transition-all hover:bg-black/60"
@@ -378,10 +338,7 @@ const MapPlugins = ({
                 <button
                     onClick={() => {
                         setAutoFollow(true);
-                        // Forza il ritorno alle coordinate e allo zoom di default coerente allo stato (15 o 18)
-                        map.flyTo(coords, defaultZoom, { // <--- DINAMICO
-                            duration: 0.5
-                        });
+                        map.flyTo(coords, defaultZoom, { duration: 0.5 });
                     }}
                     className={`w-12 h-12 rounded-2xl backdrop-blur-xl border transition-all flex items-center justify-center shadow-xl active:scale-90 ${
                         autoFollow
@@ -392,7 +349,6 @@ const MapPlugins = ({
                     <Target size={24} className={autoFollow ? "text-white" : "text-gray-300"} />
                 </button>
 
-                {/* FULLSCREEN TOGGLE */}
                 <button
                     onClick={(e) => {
                         e.stopPropagation();
@@ -401,10 +357,7 @@ const MapPlugins = ({
                     }}
                     className="w-12 h-12 rounded-2xl bg-black/50 backdrop-blur-xl border border-white/20 flex items-center justify-center text-white shadow-xl active:scale-90 transition-all hover:bg-black/60"
                 >
-                    {isMapFull
-                        ? <Minimize2 size={20} />
-                        : <Maximize2 size={20} />
-                    }
+                    {isMapFull ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
                 </button>
             </div>
         </>
@@ -420,8 +373,7 @@ const HomeView = ({ manager, onTabChange }) => {
     const [showSSLModal, setShowSSLModal] = useState(false);
     const [isMapFull, setIsMapFull] = useState(false);
     const [isCopied, setIsCopied] = useState(false);
-    
-    // Calcola il livello di zoom iniziale (18 all'ancora, 11 in navigazione) e traccia lo zoom corrente
+
     const isAnchored = data?.anchor?.status && data.anchor.status !== 'MOVING';
     const defaultZoom = isAnchored ? 18 : 11;
     const [currentZoom, setCurrentZoom] = useState(defaultZoom);
@@ -441,7 +393,7 @@ const HomeView = ({ manager, onTabChange }) => {
             return { lat: parseFloat(data.anchor.lat), lon: parseFloat(data.anchor.lon) };
         }
         return { lat: lat, lon: lon };
-    }, [isAnchored, data?.anchor?.lat, data?.anchor?.lon, lat, lon]); // Sostituito isAnchored come dipendenza pulita
+    }, [isAnchored, data?.anchor?.lat, data?.anchor?.lon, lat, lon]);
 
     /** Scansiona i bersagli AIS per capire se un vicino sta galleggiando sopra la nostra ancora */
     const isMyAnchorThreatened = useMemo(() => {
@@ -453,8 +405,6 @@ const HomeView = ({ manager, onTabChange }) => {
     // --- ALGORITMO DI SMOOTHING CATMULL-ROM PER LA TRACCIA GPS ---
     const smoothedTrail = useMemo(() => {
         const rawHistory = data?.environment?.gps_history || [];
-        
-        // Aggiungiamo coords (lat, lon) come ultimo punto dinamico per la visualizzazione
         const currentPos = { lat: coords[0], lon: coords[1] };
         const pointsWithCurrent = [...rawHistory, currentPos];
 
@@ -469,7 +419,6 @@ const HomeView = ({ manager, onTabChange }) => {
             const p2 = points[i + 1];
             const p3 = points[i + 1 === points.length - 1 ? i + 1 : i + 2];
 
-            // Generiamo 4 punti intermedi per ogni segmento
             for (let t = 0; t < 1; t += 0.25) {
                 const x = 0.5 * ((2 * p1.x) + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t * t + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t * t * t);
                 const y = 0.5 * ((2 * p1.y) + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t * t + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t * t * t);
@@ -478,12 +427,12 @@ const HomeView = ({ manager, onTabChange }) => {
         }
         smoothPoints.push([points[points.length - 1].x, points[points.length - 1].y]);
         return smoothPoints;
-    }, [data?.environment?.gps_history, coords]); // Aggiunto coords come dipendenza
+    }, [data?.environment?.gps_history, coords]);
 
     return (
         <div className="px-2 pt-5 pb-4 landscape:p-2 landscape:pt-4 space-y-2 landscape:space-y-2">
 
-            {/* --- MODALE SBLOCCO SSL (Ottimizzata per schermi bassi) --- */}
+            {/* --- MODALE SBLOCCO SSL --- */}
             {showSSLModal && (
                 <div className="fixed inset-0 z-[5000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
                     <div className="bg-[#1a1a1a] border border-white/10 p-6 landscape:p-5 rounded-[2rem] shadow-2xl max-w-sm w-full space-y-4 landscape:space-y-3 my-auto">
@@ -503,7 +452,7 @@ const HomeView = ({ manager, onTabChange }) => {
                 </div>
             )}
             
-            {/* --- SEZIONE 1: ENERGIA (Con logica dinamica per Watt e Segni) --- */}
+            {/* --- SEZIONE 1: ENERGIA --- */}
             <div className="grid grid-cols-2 gap-2 landscape:gap-2">
                 {/* CARD BATTERIA */}
                 <div onClick={() => onTabChange(1)} className="cursor-pointer active:scale-95 transition-transform">
@@ -520,7 +469,7 @@ const HomeView = ({ manager, onTabChange }) => {
                     />
                 </div>
 
-                {/* CARD BANCHINA / INVERTER (Sempre su due righe a destra) */}
+                {/* CARD BANCHINA / INVERTER */}
                 <div onClick={() => onTabChange(3)} className="cursor-pointer active:scale-95 transition-transform">
                     <StatusBox
                         title="BANCHINA"
@@ -545,7 +494,7 @@ const HomeView = ({ manager, onTabChange }) => {
 
             {/* --- SEZIONE 2 & 3: TEMPERATURE E INTERRUTTORI --- */}
             <div className="flex flex-col md:flex-row gap-2 landscape:gap-2 w-full">
-                {/* Temperature (4 colonne o 2x2 in landscape) */}
+                {/* Temperature */}
                 <div className="w-full md:w-1/2 grid grid-cols-4 md:grid-cols-2 gap-2">
                     <div onClick={() => onTabChange(2)} className="cursor-pointer active:scale-95 transition-transform h-full">
                         <TempCard icon={<Thermometer size={18}/>} title="POZZ." val={data?.environment?.temp_pozzetto} color="text-yellow-500" />
@@ -555,8 +504,8 @@ const HomeView = ({ manager, onTabChange }) => {
                     <TempCard icon={<Snowflake size={18}/>} title="FREEZER" val={data?.environment?.temp_freezer} color="text-blue-500" valueColor={getHybridTempColor(data?.environment?.temp_freezer)} />
                 </div>
 
-                {/* Interruttori Shelly (Inibiti durante il sync) */}
-                <div className={`w-full md:w-1/2 bg-white/5 rounded-[2rem] flex flex-col divide-y divide-white/5 border border-white/10 overflow-hidden shadow-xl  ${isUpdating ? 'opacity-60 grayscale-[0.5]' : 'opacity-100'}`}>
+                {/* Interruttori Shelly */}
+                <div className={`w-full md:w-1/2 bg-white/5 rounded-[2rem] flex flex-col divide-y divide-white/5 border border-white/10 overflow-hidden shadow-xl ${isUpdating ? 'opacity-60 grayscale-[0.5]' : 'opacity-100'}`}>
                     <QuickActionRow icon={<Droplet className="text-blue-400"/>} name="Pompa Acqua" isOn={data?.switches?.pump_on} onToggle={(v) => toggleSwitch('pump', v)} disabled={isUpdating} />
                     <QuickActionRow icon={<Flame className="text-orange-400"/>} name="Boiler" isOn={data?.switches?.boiler_on} onToggle={(v) => toggleSwitch('boiler', v)} disabled={isUpdating} />
                     <QuickActionRow icon={<Shirt className="text-purple-400"/>} name="Lavatrice" isOn={data?.switches?.washing_machine_on} onToggle={(v) => toggleSwitch('washer', v)} disabled={isUpdating} />
@@ -564,7 +513,6 @@ const HomeView = ({ manager, onTabChange }) => {
             </div>
 
             {/* --- SEZIONE 4: MAPPA SATELLITARE CON STRUTTURA COCKPIT NAUTICO --- */}
-            {/* Corretto pb-22 in pb-24 per garantire un margine inferiore di 96px rispetto alla barra di navigazione */}
             <div className="space-y-3 pb-24 flex flex-col items-center w-full">
                 {!isMapFull && (
                     <div className="w-[80%] bg-[#121212]/90 backdrop-blur-xl border border-white/10 p-4 rounded-[2rem] shadow-2xl flex flex-col gap-2.5 text-white">
@@ -594,7 +542,6 @@ const HomeView = ({ manager, onTabChange }) => {
                                         
                                         const isArmed = (data.anchor.status === 'LOCKED' || data.anchor.status === 'DRAGGING' || data.anchor.status === 'DRIFTING' || data.anchor.status === 'LEARNING');
                                         
-                                        // Genera una stringa diagnostica ultra-completa per le analisi in chat
                                         const textToCopy = isArmed
                                             ? `⛵ ROTEVISTA: [${data.anchor.description || data.anchor.status}] | D: ${data.anchor.boat_dist?.toFixed(1) || '0.0'}m | ${formatNautic(data.anchor.lat, true)} ${formatNautic(data.anchor.lon, false)} | R: ${data.anchor.radius?.toFixed(0) || '0'}m | Prec: ±${data.anchor.std_dev?.toFixed(1) || '0.0'}m | Fondale: ${data.anchor.depth?.toFixed(1) || '0.0'}m | Catena: ${data.anchor.chain?.toFixed(0) || '0'}m | Volvo: ${data.anchor.engine_on ? 'ON' : 'OFF'} (${data.anchor.engine_v?.toFixed(1) || '0.0'}V)${data.anchor.score > 0 ? ` [Score: ${data.anchor.score}/70]` : ''}`
                                             : `⛵ ROTEVISTA: ${data.anchor.description || data.anchor.status}`;
@@ -627,11 +574,15 @@ const HomeView = ({ manager, onTabChange }) => {
                             </div>
                         )}
 
-                        {/* RIGA 2: Griglia a 3 Colonne (Distanze in rada o Anteprima di calata) */}
-                        {data?.anchor?.status && (data.anchor.status !== 'MOVING' || (data.anchor.status === 'MOVING' && data.anchor.radius > 0)) && (
-                            <div className="grid grid-cols-3 gap-2 py-2 border-t border-b border-white/5 text-center bg-white/[0.01] rounded-2xl">
-                                {data.anchor.status === 'MOVING' ? (
-                                    // Visualizzazione Anteprima Calata (In Avvicinamento)
+                        {/* RIGA 2: Griglia Dinamica (4 Colonne in navigazione, 3 Colonne in avvicinamento o all'ancora) */}
+                        {data?.anchor?.status && (
+                            <div className={`grid ${
+                                data.anchor.status === 'MOVING' && (!data.anchor.radius || data.anchor.radius === 0)
+                                    ? 'grid-cols-4'
+                                    : 'grid-cols-3'
+                            } gap-1.5 py-2 border-t border-b border-white/5 text-center bg-white/[0.01] rounded-2xl`}>
+                                {data.anchor.status === 'MOVING' && data.anchor.radius > 0 ? (
+                                    // 1. Anteprima Calata attiva in avvicinamento (3 Colonne)
                                     <>
                                         <div className="flex flex-col">
                                             <span className="text-[7.5px] font-black uppercase text-gray-400 tracking-wider">Distanza</span>
@@ -652,8 +603,63 @@ const HomeView = ({ manager, onTabChange }) => {
                                             </span>
                                         </div>
                                     </>
+                                ) : data.anchor.status === 'MOVING' ? (
+                                    // 2. Navigazione Aperta: Griglia Tattica a 4 Colonne (Motore, Vela, Tratta, SOG)
+                                    <>
+                                        <div className="flex flex-row items-center justify-center gap-1.5 px-1">
+                                            <span className="text-xl select-none leading-none">🚤</span>
+                                            <div className="flex flex-col items-start justify-center">
+                                                <span className="text-[7.5px] font-black uppercase text-yellow-400 tracking-wider leading-none">Motore</span>
+                                                <span className="text-sm font-black font-mono mt-0.5 text-white leading-none">
+                                                    {data?.trip?.engine_time || '0m'}
+                                                </span>
+                                                <span className="text-[8.5px] font-bold font-mono text-gray-400 mt-1 leading-none">
+                                                    {data?.trip?.engine_nm || '0.00 NM'}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-row items-center justify-center gap-1.5 border-l border-r border-white/5 px-1">
+                                            <span className="text-xl select-none leading-none">⛵</span>
+                                            <div className="flex flex-col items-start justify-center">
+                                                <span className="text-[7.5px] font-black uppercase text-cyan-400 tracking-wider leading-none">Vela</span>
+                                                <span className="text-sm font-black font-mono mt-0.5 text-white leading-none">
+                                                    {data?.trip?.sail_time || '0m'}
+                                                </span>
+                                                <span className="text-[8.5px] font-bold font-mono text-gray-400 mt-1 leading-none">
+                                                    {data?.trip?.sail_nm || '0.00 NM'}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-row items-center justify-center gap-1.5 border-r border-white/5 px-1">
+                                            <span className="text-xl select-none leading-none">⏱️</span>
+                                            <div className="flex flex-col items-start justify-center">
+                                                <span className="text-[7.5px] font-black uppercase text-gray-400 tracking-wider leading-none">Tratta</span>
+                                                <span className="text-sm font-black font-mono mt-0.5 text-gray-200 leading-none">
+                                                    {data?.trip?.total_nav_time || '0m'}
+                                                </span>
+                                                <span className="text-[8.5px] font-bold font-mono text-cyan-400 mt-1 leading-none">
+                                                    {data?.trip?.total_nm || '0.00 NM'}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-row items-center justify-center gap-1.5 px-1">
+                                            <span className="text-xl select-none leading-none">⚡</span>
+                                            <div className="flex flex-col items-start justify-center font-mono">
+                                                <span className="text-[7.5px] font-black uppercase text-cyan-400 tracking-wider leading-none">SOG</span>
+                                                <span className="text-sm font-black mt-0.5 text-cyan-400 leading-none">
+                                                    {(data?.anchor?.sog !== undefined ? data.anchor.sog : (data?.gps?.sog !== undefined ? data.gps.sog : (data?.gps?.speed ? parseFloat(data.gps.speed) * 1.94384 : 0))).toFixed(1)}<span className="text-[9px] font-bold ml-0.5">kn</span>
+                                                </span>
+                                                <span className="text-[8.5px] font-bold text-gray-400 mt-1 leading-none">
+                                                    {Math.round(data?.environment?.heading !== undefined ? data.environment.heading : (data?.gps?.cog || 0))}°
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </>
                                 ) : (
-                                    // Visualizzazione Standard di Ancoraggio (In Rada)
+                                    // 3. All'Ancora o in Porto (3 Colonne di Sicurezza)
                                     <>
                                         <div className="flex flex-col">
                                             <span className="text-[7.5px] font-black uppercase text-gray-400 tracking-wider">Distanza</span>
@@ -672,13 +678,17 @@ const HomeView = ({ manager, onTabChange }) => {
                                             </span>
                                         </div>
                                         <div className="flex flex-col font-mono">
-                                            <span className="text-[7.5px] font-black uppercase text-gray-400 tracking-wider">Precisione</span>
+                                            <span className="text-[7.5px] font-black uppercase text-gray-400 tracking-wider">
+                                                {data?.trip?.anchor_time && data?.trip?.anchor_time !== "0m" ? "Tempo Sosta" : "Precisione"}
+                                            </span>
                                             <span className={`text-sm font-black mt-0.5 ${
                                                 (data.anchor.status === 'LEARNING' || data.anchor.status === 'SETTLING') ? 'text-orange-400' : 'text-cyan-400'
                                             }`}>
-                                                {(data.anchor.status === 'LEARNING' || data.anchor.status === 'SETTLING')
-                                                    ? 'Calcolo...'
-                                                    : (data.anchor.std_dev > 0 ? `±${data.anchor.std_dev.toFixed(1)}m` : '±0.0m')}
+                                                {data?.trip?.anchor_time && data?.trip?.anchor_time !== "0m"
+                                                    ? data.trip.anchor_time
+                                                    : ((data.anchor.status === 'LEARNING' || data.anchor.status === 'SETTLING')
+                                                        ? 'Calcolo...'
+                                                        : (data.anchor.std_dev > 0 ? `±${data.anchor.std_dev.toFixed(1)}m` : '±0.0m'))}
                                             </span>
                                         </div>
                                     </>
@@ -686,27 +696,30 @@ const HomeView = ({ manager, onTabChange }) => {
                             </div>
                         )}
 
-                        {/* RIGA 3: Informazioni Ambientali, Volvo, SOG e Note */}
+                        {/* RIGA 3: Informazioni Ambientali, Volvo e Consuntivo Tratta */}
                         <div className="flex justify-between items-center text-[10px] font-bold text-gray-300 font-mono leading-none">
-                            {/* Dati Fisici del fondale (Fondale & Catena) */}
+                            {/* Dati Fisici del fondale */}
                             <div className="flex gap-4">
                                 {data?.anchor?.depth > 0 && (
                                     <span>Fondale: <span className="text-white font-black">{data.anchor.depth.toFixed(1)}m</span></span>
                                 )}
-                                {data?.anchor?.chain > 0 && (
-                                    <span>{data?.anchor?.status === 'MOVING' ? 'Catena Suggerita:' : 'Catena:'} <span className="text-white font-black">{data.anchor.chain.toFixed(0)}m</span></span>
+                                {data?.anchor?.chain > 0 && data?.anchor?.status !== 'MOVING' && (
+                                    <span>Catena: <span className="text-white font-black">{data.anchor.chain.toFixed(0)}m</span></span>
+                                )}
+                                {data?.anchor?.status === 'MOVING' && data?.anchor?.radius > 0 && data?.anchor?.chain > 0 && (
+                                    <span>Catena Suggerita: <span className="text-white font-black">{data.anchor.chain.toFixed(0)}m</span></span>
                                 )}
                             </div>
 
-                            {/* Integrazione Dinamica Allarmi/Volvo Engine/Bassa Fiducia/SOG */}
+                            {/* Integrazione Dinamica: Allarmi Volvo Engine o Consuntivo Completo Tratta all'Ancora */}
                             <div className="flex items-center">
-                                {data?.anchor?.status === 'MOVING' ? (
-                                    <span className="text-cyan-400 font-bold">
-                                        SOG: {data?.gps?.speed ? (parseFloat(data.gps.speed) * 1.94384).toFixed(1) : (data?.gps?.sog?.toFixed(1) || '0.0')} kn
-                                    </span>
-                                ) : data?.anchor?.engine_on ? (
+                                {data?.anchor?.engine_on ? (
                                     <span className="text-yellow-400 font-black animate-pulse flex items-center gap-1">
-                                        ⚡ Volvo: {data.anchor.engine_v?.toFixed(1)}V {data.anchor.score > 0 ? `[Salpamento: ${data.anchor.score}/70]` : ''}
+                                        ⚡ Volvo: {data.anchor.engine_v?.toFixed(1)}V {data.anchor.status !== 'MOVING' && data.anchor.score > 0 ? `[Salpamento: ${data.anchor.score}/70]` : ''}
+                                    </span>
+                                ) : data?.anchor?.status !== 'MOVING' && data?.trip?.total_nav_time && data.trip.total_nav_time !== "0m" ? (
+                                    <span className="text-gray-300 font-medium">
+                                        Tratta: <span className="text-cyan-400 font-black">{data.trip.total_nm || '0 NM'}</span> <span className="text-gray-400 text-[9px]">(🚤 {data.trip.engine_time} - {data.trip.engine_nm} • ⛵ {data.trip.sail_time} - {data.trip.sail_nm})</span>
                                     </span>
                                 ) : (
                                     data?.anchor?.status === 'LEARNING' && data?.anchor?.low_conf_reason ? (
@@ -723,14 +736,13 @@ const HomeView = ({ manager, onTabChange }) => {
                     </div>
                 )}
 
-                {/* Aggiungiamo la classe condizionale map-full-screen */}
+                {/* MAPPA SATELLITARE LEAFLET */}
                 <div
                     className={`${isMapFull ? 'map-full-screen' : 'h-64 landscape:h-80 w-[80%] rounded-[2.5rem]'} overflow-hidden border border-white/10 shadow-2xl relative isolate transition-opacity duration-200`}
                 >
-                
                     <MapContainer
                         center={coords}
-                        zoom={defaultZoom} // <--- INITIALIZZA CON LO ZOOM CONTESTUALE DI STATO
+                        zoom={defaultZoom}
                         maxZoom={22}
                         style={{ height: '100%', width: '100%' }}
                         zoomControl={false}
@@ -742,7 +754,6 @@ const HomeView = ({ manager, onTabChange }) => {
                             maxNativeZoom={18}
                             errorTileUrl=""
                         />
-                        {/* Passiamo la callback di zoom a MapPlugins */}
                         <MapPlugins
                             coords={coords}
                             trail={smoothedTrail}
@@ -754,7 +765,7 @@ const HomeView = ({ manager, onTabChange }) => {
                             onZoomChange={setCurrentZoom}
                         />
 
-                        {/* CERCHIO ANTEPRIMA CALATA / GHOST FOOTPRINT (Visibile in avvicinamento alla rada a < 4kn) */}
+                        {/* CERCHIO ANTEPRIMA CALATA / GHOST FOOTPRINT */}
                         {data?.anchor?.lat && data?.anchor?.lon && data.anchor.radius > 0 &&
                          data.anchor.status === 'MOVING' && (
                             <Circle
@@ -771,28 +782,28 @@ const HomeView = ({ manager, onTabChange }) => {
                             />
                         )}
 
-                        {/* CERCHIO DI SICUREZZA PROVVISORIO (Arancione, visibile in fase di LEARNING o SETTLING) */}
+                        {/* CERCHIO DI SICUREZZA PROVVISORIO */}
                         {data?.anchor?.lat && data?.anchor?.lon && data.anchor.radius > 0 &&
                          (data.anchor.status === 'LEARNING' || data.anchor.status === 'SETTLING') && (
                             <Circle
                                 center={[data.anchor.lat, data.anchor.lon]}
                                 radius={data.anchor.radius}
                                 pathOptions={{
-                                    color: '#f97316', // Arancione vivido per indicare l'assestamento/apprendimento
+                                    color: '#f97316',
                                     fillOpacity: 0,
                                     weight: 1.5,
-                                    dashArray: '6, 10', // Tratteggio differente per distinguerlo dalla guardia attiva
+                                    dashArray: '6, 10',
                                     interactive: false
                                 }}
                             />
                         )}
 
-                        {/* CERCHIO DI SICUREZZA DEFINITIVO (Cyan/Rosso, visibile in LOCKED, DRAGGING o DRIFTING) */}
+                        {/* CERCHIO DI SICUREZZA DEFINITIVO */}
                         {data?.anchor?.lat && data?.anchor?.lon && data.anchor.radius > 0 &&
                          (data.anchor.status === 'LOCKED' || data.anchor.status === 'DRAGGING' || data.anchor.status === 'DRIFTING') && (
                             <Circle
                                 center={[data.anchor.lat, data.anchor.lon]}
-                                radius={data.anchor.radius + Math.max(15, data.anchor.radius * 0.30)} // Allineato al metro con la soglia allarme reale
+                                radius={data.anchor.radius + Math.max(15, data.anchor.radius * 0.30)}
                                 pathOptions={{
                                     color: (data.anchor.status === 'DRAGGING' || data.anchor.status === 'DRIFTING') ? '#ef4444' : '#22d3ee',
                                     fillOpacity: 0,
@@ -803,13 +814,12 @@ const HomeView = ({ manager, onTabChange }) => {
                             />
                         )}
 
-                        {/* RANGE RINGS STRATEGICI ADATTIVI ALLO ZOOM CON ETICHETTE ALLINEATE A OVEST */}
+                        {/* RANGE RINGS STRATEGICI */}
                         {getDynamicRangeRings(currentZoom).map((ring) => {
                             const labelPos = getWestLabelCoords(rangeRingsCenter, ring.r);
 
                             return (
                                 <React.Fragment key={`ring-${ring.r}`}>
-                                    {/* Cerchio di distanza bianco e ben visibile */}
                                     <Circle
                                         center={[rangeRingsCenter.lat, rangeRingsCenter.lon]}
                                         radius={ring.r}
@@ -822,7 +832,6 @@ const HomeView = ({ manager, onTabChange }) => {
                                             interactive: false
                                         }}
                                     />
-                                    {/* Etichetta testuale ad alto contrasto con scala dinamica (m / NM) */}
                                     <Marker
                                         position={labelPos}
                                         icon={new L.DivIcon({
@@ -837,15 +846,13 @@ const HomeView = ({ manager, onTabChange }) => {
                             );
                         })}
 
-                        {/* BERSAGLI AIS FILTRATI (Raggio 20M, colore e cinematica pilotati dal backend) */}
+                        {/* BERSAGLI AIS FILTRATI */}
                         {(data?.environment?.ais_targets || []).map((v) => {
-                            // Stato cinetico e colore ereditati direttamente dal backend Node-RED
                             const isMoving = v.isMoving !== undefined ? v.isMoving : (!v.isAnchored && v.sog >= 0.3);
                             const vesselColor = getVesselStatusColor(v);
 
                             return (
                                 <React.Fragment key={v.id}>
-                                    {/* Disegno della traccia storica (AIS Trail) */}
                                     {v.trail && v.trail.length >= 2 && (
                                         <Polyline
                                             positions={v.trail.map(pt => [pt.lat, pt.lon])}
@@ -859,7 +866,6 @@ const HomeView = ({ manager, onTabChange }) => {
 
                                     {isMoving ? (
                                         <React.Fragment>
-                                            {/* Vettore COG proiettato a 15 minuti - Colore unificato via pathOptions */}
                                             <Polyline
                                                 positions={[[v.lat, v.lon], getVectorCoords(v.lat, v.lon, v.cog, v.sog)]}
                                                 pathOptions={{
@@ -870,13 +876,11 @@ const HomeView = ({ manager, onTabChange }) => {
                                                 }}
                                                 interactive={false}
                                             />
-                                            {/* Triangolo rotante orientato al COG con dimensione da zoom */}
                                             <Marker
                                                 position={[v.lat, v.lon]}
                                                 icon={movingVesselIcon(v.cog, vesselColor, currentZoom)}
                                                 interactive={false}
                                             />
-                                            {/* Etichetta ARPA con Emoji, Nome, Velocità, CPA e Allarmi proporzionata allo zoom */}
                                             <Marker
                                                 position={[v.lat, v.lon]}
                                                 icon={movingVesselLabelIcon(v.name, v.sog, v.cpa, v.tcpa, v.crossDir, v.risk, v.riskMsg, v.age, vesselColor, v.type, currentZoom)}
@@ -885,19 +889,16 @@ const HomeView = ({ manager, onTabChange }) => {
                                         </React.Fragment>
                                     ) : (
                                         <React.Fragment>
-                                            {/* Puntino discreto dell'imbarcazione all'ancora con colore di rischio */}
                                             <Marker
                                                 position={[v.lat, v.lon]}
                                                 icon={stationaryVesselIcon(v.risk)}
                                                 interactive={false}
                                             />
-                                            {/* Nome barca all'ancora con Emoji proporzionata allo zoom */}
                                             <Marker
                                                 position={[v.lat, v.lon]}
                                                 icon={stationaryVesselLabelIcon(v.name, v.risk, v.riskMsg, v.dist, v.age, v.type, currentZoom)}
                                                 interactive={false}
                                             />
-                                            {/* Se stiamo salendo sull'ancora del vicino, disegna la sua ancora in rosso e il raggio di swing */}
                                             {v.risk === "RED" && v.riskMsg === "SOPRA SUA ANCORA!" && v.anchorLat && v.anchorLon && (
                                                 <React.Fragment>
                                                     <Circle
@@ -927,7 +928,7 @@ const HomeView = ({ manager, onTabChange }) => {
                             );
                         })}
 
-                        {/* MARKER POSIZIONE PREVISTA ANCORA (Dinamico: passa a rosso se il vicino ci sale sopra) */}
+                        {/* MARKER POSIZIONE PREVISTA ANCORA */}
                         {data?.anchor?.lat && data?.anchor?.lon &&
                          data.anchor.status !== 'LEARNING' && data.anchor.status !== 'SETTLING' && data.anchor.status !== 'MOVING' && (
                             <Marker
@@ -937,7 +938,7 @@ const HomeView = ({ manager, onTabChange }) => {
                             />
                         )}
 
-                        {/* MARKER BARCA (Sempre sopra a tutto) */}
+                        {/* MARKER BARCA */}
                         <Marker position={coords} icon={boatIcon} zIndexOffset={1000} />
                     </MapContainer>
                 </div>
