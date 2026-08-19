@@ -85,8 +85,10 @@ const stationaryVesselIcon = (risk) => {
     });
 };
 
-/** Colore semaforico univoco pilotato al 100% dal backend Node-RED (Single Source of Truth) */
+/** Colore semaforico univoco basato su v.risk dal backend (Rosso Collisione, Arancione Attenzione o Grigio Base) */
 const getVesselStatusColor = (v) => {
+    if (v.risk === "RED") return "#ef4444";
+    if (v.risk === "ORANGE") return "#f97316";
     return v.color || "rgba(225, 225, 225, 0.85)";
 };
 
@@ -231,17 +233,6 @@ const getShorePowerColor = (w, limitAmps, v, isShoreOn) => {
     return 'text-gray-100';
 };
 
-const toggleFullscreen = () => {
-    const element = document.getElementById("map-container");
-    if (!document.fullscreenElement) {
-        element.requestFullscreen().catch(err => {
-            console.error(`Errore nel fullscreen: ${err.message}`);
-        });
-    } else {
-        document.exitFullscreen();
-    }
-};
-
 /** Scala cromatica universale per Pozzetti (Freezer/Frigo) */
 const getHybridTempColor = (t) => {
     if (t === undefined || t === null) return 'text-white';
@@ -288,6 +279,7 @@ const MapPlugins = ({
         if (onZoomChange) onZoomChange(nextZoom);
     };
 
+    // Centra la mappa sulla barca durante l'autoFollow preservando lo zoom scelto dall'utente
     useEffect(() => {
         const id = requestAnimationFrame(() => {
             map.invalidateSize(false);
@@ -297,12 +289,6 @@ const MapPlugins = ({
         });
         return () => cancelAnimationFrame(id);
     }, [isMapFull, autoFollow, coords, map]);
-
-    useEffect(() => {
-        if (autoFollow && coords[0] !== 0) {
-            map.setView(coords, defaultZoom, { animate: true, duration: 0.5 });
-        }
-    }, [coords, autoFollow, defaultZoom, map]);
 
     return (
         <>
@@ -648,7 +634,7 @@ const HomeView = ({ manager, onTabChange }) => {
                                             </div>
                                         </div>
 
-                                        {/* BLOCCO 4: SOG & PRUA */}
+                                        {/* BLOCCO 4: SOG & PRUA (Priorità intenzionale a data.anchor.sog per media lunga e stabile a 15s con filtro EMA) */}
                                         <div className="flex flex-row items-center justify-center gap-2 border-t sm:border-t-0 border-l border-white/5 sm:border-l-0 px-2 py-1">
                                             <span className="text-2xl select-none leading-none">⚡</span>
                                             <div className="flex flex-col items-start justify-center font-mono">
@@ -1000,9 +986,8 @@ const HomeView = ({ manager, onTabChange }) => {
                             );
                         })}
 
-                        {/* MARKER POSIZIONE PREVISTA ANCORA */}
-                        {data?.anchor?.lat && data?.anchor?.lon &&
-                         data.anchor.status !== 'LEARNING' && data.anchor.status !== 'SETTLING' && data.anchor.status !== 'MOVING' && (
+                        {/* MARKER POSIZIONE ANCORA (Visibile in SETTLING, LEARNING e LOCKED) */}
+                        {data?.anchor?.lat && data?.anchor?.lon && data.anchor.status !== 'MOVING' && (
                             <Marker
                                 position={[data.anchor.lat, data.anchor.lon]}
                                 icon={myAnchorMarkerIcon(isMyAnchorThreatened)}
