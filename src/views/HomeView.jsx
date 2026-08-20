@@ -50,6 +50,28 @@ const getWestLabelCoords = (center, radius) => {
     return [center.lat, center.lon + dLon];
 };
 
+/** Calcola lo zoom intelligente dinamico in base a stato, velocità, fondale e motore */
+const getSmartZoom = (status, speedKn, depthM, isEngineOn) => {
+    // 1. All'ancora o in porto: massimo dettaglio su brandeggio e cerchio di guardia
+    if (status === 'LOCKED' || status === 'LEARNING' || status === 'SETTLING' || status === 'IN_PORTO') {
+        return 18;
+    }
+
+    // 2. Avvicinamento ancoraggio: fondale utile (1.5 - 25m) con motore acceso o bassa velocità
+    const isAnchorApproach = (depthM > 0 && depthM <= 25.0) && (isEngineOn || speedKn < 3.5);
+
+    if (isAnchorApproach) {
+        if (speedKn < 1.5) return 18; // Manovra calata a picco / retromarcia stesa catena
+        if (speedKn < 3.0) return 17; // Avvicinamento stretto / Anteprima calata
+        if (speedKn < 5.0) return 15; // Ingresso in rada / baia
+    }
+
+    // 3. Navigazione aperta o vela in mare aperto (fondo profondo o velocità sostenuta)
+    if (speedKn > 8.0) return 11;     // Navigazione veloce / altura (panoramica 10 NM)
+    if (speedKn > 5.0) return 13;     // Navigazione costiera (3 NM)
+    return 13;                        // Bonaccia a vela / dislocamento lento in mare aperto
+};
+
 /** Restituisce i 3 cerchi di distanza dinamici in base allo zoom attuale, scalati per rientrare su schermi iPhone */
 const getDynamicRangeRings = (zoom) => {
     if (zoom >= 19) return [{ r: 15, label: "15m" }, { r: 30, label: "30m" }, { r: 45, label: "45m" }];
@@ -249,12 +271,12 @@ const getHybridTempColor = (t) => {
 // ============================================================
 const MapPlugins = ({
     coords,
-    trail,
+    trailSegments,
     autoFollow,
     setAutoFollow,
     isMapFull,
     setIsMapFull,
-    defaultZoom,
+    smartZoom,
     onZoomChange
 }) => {
     const map = useMap();
@@ -279,31 +301,44 @@ const MapPlugins = ({
         if (onZoomChange) onZoomChange(nextZoom);
     };
 
-    // Centra la mappa sulla barca durante l'autoFollow preservando lo zoom scelto dall'utente
+    const [lat, lon] = coords;
+
+    // Centra la mappa sulla barca durante l'autoFollow
     useEffect(() => {
         const id = requestAnimationFrame(() => {
             map.invalidateSize(false);
-            if (autoFollow && coords[0] !== 0) {
-                map.setView(coords, map.getZoom(), { animate: false });
+            if (autoFollow && lat !== 0) {
+                map.setView([lat, lon], map.getZoom(), { animate: false });
             }
         });
         return () => cancelAnimationFrame(id);
-    }, [isMapFull, autoFollow, coords, map]);
+    }, [isMapFull, autoFollow, lat, lon, map]);
+
+    // Transizione progressiva automatica dello Zoom Intelligente (Avvicinamento / Ripartenza)
+    useEffect(() => {
+        if (autoFollow && map && lat !== 0) {
+            const currentMapZoom = map.getZoom();
+            if (currentMapZoom !== smartZoom) {
+                map.flyTo([lat, lon], smartZoom, { duration: 0.8 });
+            }
+        }
+    }, [smartZoom, autoFollow, lat, lon, map]);
 
     return (
         <>
-            {/* GPS TRAIL */}
-            {trail.length > 0 && (
+            {/* GPS TRAIL COLOR-CODED (Vela: Ciano, Motore: Arancione, Brandeggio: Grigio) */}
+            {trailSegments.map((seg, idx) => (
                 <Polyline
-                    positions={trail}
-                    color="#22d3ee"
-                    weight={3}
-                    opacity={0.75}
+                    key={`trail-seg-${idx}`}
+                    positions={seg.positions}
+                    color={seg.color}
+                    weight={seg.weight}
+                    opacity={seg.opacity}
                     lineCap="round"
                     lineJoin="round"
                     smoothFactor={0}
                 />
-            )}
+            ))}
 
             {/* CONTROLLI MAPPA */}
             <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-3 z-[1000]">
@@ -324,7 +359,7 @@ const MapPlugins = ({
                 <button
                     onClick={() => {
                         setAutoFollow(true);
-                        map.flyTo(coords, defaultZoom, { duration: 0.5 });
+                        map.flyTo(coords, smartZoom, { duration: 0.6 });
                     }}
                     className={`w-12 h-12 rounded-2xl backdrop-blur-xl border transition-all flex items-center justify-center shadow-xl active:scale-90 ${
                         autoFollow
@@ -360,18 +395,26 @@ const HomeView = ({ manager, onTabChange }) => {
     const [isMapFull, setIsMapFull] = useState(false);
     const [isCopied, setIsCopied] = useState(false);
 
-    const isAnchored = data?.anchor?.status && data.anchor.status !== 'MOVING';
-    const defaultZoom = isAnchored ? 18 : 11;
-    const [currentZoom, setCurrentZoom] = useState(defaultZoom);
+    const lat = parseFloat(data?.gps?.lat) || 36.78;
+    const lon = parseFloat(data?.gps?.lon) || 14.54;
+    const coords = useMemo(() => [lat, lon], [lat, lon]);
+
+    const currentSog = data?.anchor?.sog !== undefined ? data.anchor.sog : (data?.gps?.sog || 0);
+    const currentDepth = parseFloat(data?.anchor?.depth || data?.environment?.depth || 0);
+    const isEngineRunning = !!(data?.anchor?.engine_on);
+    const anchorStatus = data?.anchor?.status || 'MOVING';
+    const isAnchored = anchorStatus !== 'MOVING';
+
+    const smartZoom = useMemo(() => {
+        return getSmartZoom(anchorStatus, currentSog, currentDepth, isEngineRunning);
+    }, [anchorStatus, currentSog, currentDepth, isEngineRunning]);
+
+    const [currentZoom, setCurrentZoom] = useState(smartZoom);
 
     useEffect(() => {
         if (error) setShowSSLModal(true);
         else setShowSSLModal(false);
     }, [error]);
-
-    const lat = parseFloat(data?.gps?.lat) || 36.78;
-    const lon = parseFloat(data?.gps?.lon) || 14.54;
-    const coords = [lat, lon];
 
     /** Calcola il centro dinamico per gli anelli di distanza (Ancora o Barca) */
     const rangeRingsCenter = useMemo(() => {
@@ -388,32 +431,69 @@ const HomeView = ({ manager, onTabChange }) => {
         );
     }, [data?.environment?.ais_targets]);
 
-    // --- ALGORITMO DI SMOOTHING CATMULL-ROM PER LA TRACCIA GPS ---
-    const smoothedTrail = useMemo(() => {
+    // --- SEGMENTAZIONE E COLOR-CODING DELLA TRACCIA GPS (Vela, Motore, Ancoraggio) ---
+    const trailSegments = useMemo(() => {
         const rawHistory = data?.environment?.gps_history || [];
-        const currentPos = { lat: coords[0], lon: coords[1] };
-        const pointsWithCurrent = [...rawHistory, currentPos];
+        const isEngineOn = data?.anchor?.engine_on || false;
+        const currentMode = data?.anchor?.status === 'MOVING' ? (isEngineOn ? "engine" : "sail") : "anchor";
+        
+        const currentPt = { lat: coords[0], lon: coords[1], m: currentMode };
+        const fullPoints = [...rawHistory, currentPt];
 
-        if (pointsWithCurrent.length < 4) return pointsWithCurrent.map(h => [parseFloat(h.lat), parseFloat(h.lon)]);
+        if (fullPoints.length < 2) return [];
 
-        const points = pointsWithCurrent.map(h => ({ x: parseFloat(h.lat), y: parseFloat(h.lon) }));
-        let smoothPoints = [];
+        const segments = [];
+        let curPositions = [[parseFloat(fullPoints[0].lat), parseFloat(fullPoints[0].lon)]];
+        let curMode = fullPoints[0].m || "sail";
 
-        for (let i = 0; i < points.length - 1; i++) {
-            const p0 = points[i === 0 ? i : i - 1];
-            const p1 = points[i];
-            const p2 = points[i + 1];
-            const p3 = points[i + 1 === points.length - 1 ? i + 1 : i + 2];
+        for (let i = 1; i < fullPoints.length; i++) {
+            const pt = fullPoints[i];
+            const ptLat = parseFloat(pt.lat);
+            const ptLon = parseFloat(pt.lon);
+            const mode = pt.m || "sail";
 
-            for (let t = 0; t < 1; t += 0.25) {
-                const x = 0.5 * ((2 * p1.x) + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t * t + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t * t * t);
-                const y = 0.5 * ((2 * p1.y) + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t * t + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t * t * t);
-                smoothPoints.push([x, y]);
+            if (mode === curMode) {
+                curPositions.push([ptLat, ptLon]);
+            } else {
+                // Per evitare vuoti tra segmenti adiacenti, collega l'ultimo punto al segmento successivo
+                curPositions.push([ptLat, ptLon]);
+                
+                let color = "#38bdf8"; // Vela (Ciano cielo)
+                let weight = 3;
+                let opacity = 0.85;
+
+                if (curMode === "engine") {
+                    color = "#f97316"; // Motore (Arancione)
+                } else if (curMode === "anchor") {
+                    color = "rgba(220, 220, 220, 0.55)"; // Ancoraggio / Brandeggio (Grigio chiaro)
+                    weight = 2;
+                    opacity = 0.60;
+                }
+
+                segments.push({ positions: curPositions, color, weight, opacity });
+                curPositions = [[ptLat, ptLon]];
+                curMode = mode;
             }
         }
-        smoothPoints.push([points[points.length - 1].x, points[points.length - 1].y]);
-        return smoothPoints;
-    }, [data?.environment?.gps_history, coords]);
+
+        if (curPositions.length >= 2) {
+            let color = "#38bdf8";
+            let weight = 3;
+            let opacity = 0.85;
+
+            if (curMode === "engine") {
+                color = "#f97316";
+            } else if (curMode === "anchor") {
+                color = "rgba(220, 220, 220, 0.55)";
+                weight = 2;
+                opacity = 0.60;
+            }
+
+            segments.push({ positions: curPositions, color, weight, opacity });
+        }
+
+        return segments;
+    }, [data?.environment?.gps_history, data?.anchor?.engine_on, data?.anchor?.status, coords]);
 
     return (
         <div className="px-2 pt-5 pb-4 landscape:p-2 landscape:pt-4 space-y-2 landscape:space-y-2">
@@ -800,7 +880,7 @@ const HomeView = ({ manager, onTabChange }) => {
                 >
                     <MapContainer
                         center={coords}
-                        zoom={defaultZoom}
+                        zoom={smartZoom}
                         maxZoom={22}
                         style={{ height: '100%', width: '100%' }}
                         zoomControl={false}
@@ -814,12 +894,12 @@ const HomeView = ({ manager, onTabChange }) => {
                         />
                         <MapPlugins
                             coords={coords}
-                            trail={smoothedTrail}
+                            trailSegments={trailSegments}
                             autoFollow={autoFollow}
                             setAutoFollow={setAutoFollow}
                             isMapFull={isMapFull}
                             setIsMapFull={setIsMapFull}
-                            defaultZoom={defaultZoom}
+                            smartZoom={smartZoom}
                             onZoomChange={setCurrentZoom}
                         />
 
