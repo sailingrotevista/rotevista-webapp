@@ -271,6 +271,8 @@ const getHybridTempColor = (t) => {
 // ============================================================
 const MapPlugins = ({
     coords,
+    anchorCoords,
+    isAnchored,
     trailSegments,
     autoFollow,
     setAutoFollow,
@@ -301,33 +303,57 @@ const MapPlugins = ({
         if (onZoomChange) onZoomChange(nextZoom);
     };
 
-    const [lat, lon] = coords;
+    // Centro primario: all'ancora centra l'ANCORA, in navigazione centra la BARCA
+    const activeCenter = useMemo(() => {
+        if (isAnchored && anchorCoords && anchorCoords[0] && anchorCoords[1]) {
+            return anchorCoords;
+        }
+        return coords;
+    }, [isAnchored, anchorCoords, coords]);
+
+    const [centerLat, centerLon] = activeCenter;
     const isFirstLoadRef = useRef(true);
 
-    // Gestore unificato della telecamera (Primo caricamento, Tracking coordinate e Smart Zoom adattivo)
+    // Invalida e ricalcola le dimensioni della mappa al passaggio Full Screen per caricare tutti i tile a schermo
     useEffect(() => {
-        if (!autoFollow || lat === 0) return;
+        const timer1 = setTimeout(() => {
+            map.invalidateSize(false);
+            if (autoFollow && centerLat !== 0) {
+                map.setView([centerLat, centerLon], smartZoom, { animate: false });
+            }
+        }, 60);
+
+        const timer2 = setTimeout(() => {
+            map.invalidateSize(false);
+        }, 300);
+
+        return () => {
+            clearTimeout(timer1);
+            clearTimeout(timer2);
+        };
+    }, [isMapFull, autoFollow, centerLat, centerLon, smartZoom, map]);
+
+    // Gestore telecamera (Primo caricamento, Smart Zoom adattivo e Scorrimento Fluido)
+    useEffect(() => {
+        if (!autoFollow || centerLat === 0) return;
 
         const id = requestAnimationFrame(() => {
-            map.invalidateSize(false);
             const currentMapZoom = map.getZoom();
 
             if (isFirstLoadRef.current) {
-                // Primo caricamento: aggancio immediato allo Smart Zoom senza ritardi
-                map.setView([lat, lon], smartZoom, { animate: false });
+                map.setView([centerLat, centerLon], smartZoom, { animate: false });
                 isFirstLoadRef.current = false;
                 if (onZoomChange) onZoomChange(smartZoom);
             } else if (currentMapZoom !== smartZoom) {
-                // Transizione fluida di zoom in avvicinamento/calata o ripartenza
-                map.flyTo([lat, lon], smartZoom, { duration: 0.8 });
+                map.flyTo([centerLat, centerLon], smartZoom, { duration: 0.8 });
             } else {
-                // Tracking continuo posizione senza scatti di zoom
-                map.setView([lat, lon], currentMapZoom, { animate: false });
+                // Scorrimento fluido continuo interpolato tra i cicli di polling GPS
+                map.panTo([centerLat, centerLon], { animate: true, duration: 1.0, easeLinearity: 0.25 });
             }
         });
 
         return () => cancelAnimationFrame(id);
-    }, [isMapFull, autoFollow, lat, lon, smartZoom, map, onZoomChange]);
+    }, [autoFollow, centerLat, centerLon, smartZoom, map, onZoomChange]);
 
     return (
         <>
@@ -364,7 +390,7 @@ const MapPlugins = ({
                 <button
                     onClick={() => {
                         setAutoFollow(true);
-                        map.flyTo(coords, smartZoom, { duration: 0.6 });
+                        map.flyTo(activeCenter, smartZoom, { duration: 0.6 });
                     }}
                     className={`w-12 h-12 rounded-2xl backdrop-blur-xl border transition-all flex items-center justify-center shadow-xl active:scale-90 ${
                         autoFollow
@@ -378,7 +404,6 @@ const MapPlugins = ({
                 <button
                     onClick={(e) => {
                         e.stopPropagation();
-                        setAutoFollow(false);
                         setIsMapFull(prev => !prev);
                     }}
                     className="w-12 h-12 rounded-2xl bg-black/50 backdrop-blur-xl border border-white/20 flex items-center justify-center text-white shadow-xl active:scale-90 transition-all hover:bg-black/60"
@@ -899,6 +924,8 @@ const HomeView = ({ manager, onTabChange }) => {
                         />
                         <MapPlugins
                             coords={coords}
+                            anchorCoords={data?.anchor?.lat && data?.anchor?.lon ? [parseFloat(data.anchor.lat), parseFloat(data.anchor.lon)] : null}
+                            isAnchored={isAnchored}
                             trailSegments={trailSegments}
                             autoFollow={autoFollow}
                             setAutoFollow={setAutoFollow}
