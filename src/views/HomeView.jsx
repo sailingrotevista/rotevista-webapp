@@ -282,10 +282,19 @@ const MapPlugins = ({
     onZoomChange
 }) => {
     const map = useMap();
+    const isManualZoomOverrideRef = useRef(false);
 
+    // Il Pan disattiva l'inseguimento; lo zoom manuale dell'utente viene riconosciuto tramite e.originalEvent
     const mapEvents = useMapEvents({
-        dragstart: () => setAutoFollow(false),
-        zoomstart: () => setAutoFollow(false),
+        dragstart: () => {
+            setAutoFollow(false);
+        },
+        zoomstart: (e) => {
+            // Riconosce il pinch-to-zoom SOLO se originato da un gesto fisico touch/mouse dell'utente
+            if (e && e.originalEvent) {
+                isManualZoomOverrideRef.current = true;
+            }
+        },
         zoomend: () => {
             if (onZoomChange) onZoomChange(map.getZoom());
         }
@@ -296,7 +305,8 @@ const MapPlugins = ({
     }, [map, onZoomChange]);
 
     const handleZoom = (type) => {
-        setAutoFollow(false);
+        // I tasti +/- cambiano il livello mantenendo l'inseguimento della barca
+        isManualZoomOverrideRef.current = true;
         const currentZoom = map.getZoom();
         const nextZoom = type === 'in' ? currentZoom + 1 : currentZoom - 1;
         map.setZoom(nextZoom);
@@ -319,7 +329,8 @@ const MapPlugins = ({
         const timer1 = setTimeout(() => {
             map.invalidateSize(false);
             if (autoFollow && centerLat !== 0) {
-                map.setView([centerLat, centerLon], smartZoom, { animate: false });
+                const targetZ = isManualZoomOverrideRef.current ? map.getZoom() : smartZoom;
+                map.setView([centerLat, centerLon], targetZ, { animate: false });
             }
         }, 60);
 
@@ -333,7 +344,7 @@ const MapPlugins = ({
         };
     }, [isMapFull, autoFollow, centerLat, centerLon, smartZoom, map]);
 
-    // Gestore telecamera (Primo caricamento, Smart Zoom adattivo e Scorrimento Fluido)
+    // Gestore telecamera (Primo caricamento, Tracking fluido posizione e Smart Zoom)
     useEffect(() => {
         if (!autoFollow || centerLat === 0) return;
 
@@ -341,13 +352,15 @@ const MapPlugins = ({
             const currentMapZoom = map.getZoom();
 
             if (isFirstLoadRef.current) {
+                isManualZoomOverrideRef.current = false;
                 map.setView([centerLat, centerLon], smartZoom, { animate: false });
                 isFirstLoadRef.current = false;
                 if (onZoomChange) onZoomChange(smartZoom);
-            } else if (currentMapZoom !== smartZoom) {
+            } else if (!isManualZoomOverrideRef.current && currentMapZoom !== smartZoom) {
+                // Applica lo Smart Zoom automatico se non sovrascritto manualmente dall'utente
                 map.flyTo([centerLat, centerLon], smartZoom, { duration: 0.8 });
             } else {
-                // Scorrimento fluido continuo interpolato tra i cicli di polling GPS
+                // Scorrimento fluido continuo sulla barca/ancora
                 map.panTo([centerLat, centerLon], { animate: true, duration: 1.0, easeLinearity: 0.25 });
             }
         });
@@ -389,6 +402,8 @@ const MapPlugins = ({
 
                 <button
                     onClick={() => {
+                        // Il tasto Target riattiva sia l'inseguimento che lo Smart Zoom automatico
+                        isManualZoomOverrideRef.current = false;
                         setAutoFollow(true);
                         map.flyTo(activeCenter, smartZoom, { duration: 0.6 });
                     }}
