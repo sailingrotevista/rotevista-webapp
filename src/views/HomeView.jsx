@@ -1,5 +1,5 @@
 /* --- File: src/views/HomeView.jsx --- */
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Polyline, Circle, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import {
@@ -302,27 +302,32 @@ const MapPlugins = ({
     };
 
     const [lat, lon] = coords;
+    const isFirstLoadRef = useRef(true);
 
-    // Centra la mappa sulla barca durante l'autoFollow
+    // Gestore unificato della telecamera (Primo caricamento, Tracking coordinate e Smart Zoom adattivo)
     useEffect(() => {
+        if (!autoFollow || lat === 0) return;
+
         const id = requestAnimationFrame(() => {
             map.invalidateSize(false);
-            if (autoFollow && lat !== 0) {
-                map.setView([lat, lon], map.getZoom(), { animate: false });
+            const currentMapZoom = map.getZoom();
+
+            if (isFirstLoadRef.current) {
+                // Primo caricamento: aggancio immediato allo Smart Zoom senza ritardi
+                map.setView([lat, lon], smartZoom, { animate: false });
+                isFirstLoadRef.current = false;
+                if (onZoomChange) onZoomChange(smartZoom);
+            } else if (currentMapZoom !== smartZoom) {
+                // Transizione fluida di zoom in avvicinamento/calata o ripartenza
+                map.flyTo([lat, lon], smartZoom, { duration: 0.8 });
+            } else {
+                // Tracking continuo posizione senza scatti di zoom
+                map.setView([lat, lon], currentMapZoom, { animate: false });
             }
         });
-        return () => cancelAnimationFrame(id);
-    }, [isMapFull, autoFollow, lat, lon, map]);
 
-    // Transizione progressiva automatica dello Zoom Intelligente (Avvicinamento / Ripartenza)
-    useEffect(() => {
-        if (autoFollow && map && lat !== 0) {
-            const currentMapZoom = map.getZoom();
-            if (currentMapZoom !== smartZoom) {
-                map.flyTo([lat, lon], smartZoom, { duration: 0.8 });
-            }
-        }
-    }, [smartZoom, autoFollow, lat, lon, map]);
+        return () => cancelAnimationFrame(id);
+    }, [isMapFull, autoFollow, lat, lon, smartZoom, map, onZoomChange]);
 
     return (
         <>
