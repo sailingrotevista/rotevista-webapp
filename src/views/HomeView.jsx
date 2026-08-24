@@ -35,12 +35,12 @@ const nearbyVesselAnchorIcon = new L.DivIcon({
 });
 
 const formatNautic = (val, isLat) => {
-    if (!val) return '';
+    if (val === undefined || val === null || isNaN(val)) return '';
     const hemi = isLat ? (val >= 0 ? "N" : "S") : (val >= 0 ? "E" : "W");
     const absVal = Math.abs(val);
     const deg = Math.floor(absVal);
     const min = ((absVal - deg) * 60).toFixed(4);
-    return `${deg} ${min}${hemi}`;
+    return `${deg}° ${min}'${hemi}`;
 };
 
 /** Calcola la coordinata Ovest (270°) esatta sul bordo del cerchio per posizionare le etichette */
