@@ -1037,19 +1037,8 @@ const HomeView = ({ manager, onTabChange }) => {
                             const vesselColor = getVesselStatusColor(v);
                             const hasAlert = (v.risk === "RED" || v.risk === "ORANGE");
 
-                            // FILTRO SELETTIVO:
-                            // 1. Se siamo entrambi all'ancora/fermi: etichette visibili SOLO entro 1 NM (1852m) nella stessa rada
-                            // 2. Se il bersaglio è in movimento: raggio tattico esteso a 6 NM (11112m)
-                            // 3. Se c'è allarme attivo o zoom ravvicinato (>= 17): sempre visibile
-                            let showFullDetails = false;
-                            if (hasAlert || currentZoom >= 17) {
-                                showFullDetails = true;
-                            } else if (isAnchored && !isMoving) {
-                                showFullDetails = (v.dist <= 1852); // Max 1 NM per barche ferme all'ancora
-                            } else {
-                                showFullDetails = v.isTactical || (v.dist <= 11112); // 6 NM per bersagli in rotta
-                            }
-
+                            // Dettaglio attivo: se marcato tattico da Node-RED, se in allarme, o se zoom ravvicinato (>= 15)
+                            const showFullDetails = (v.isTactical !== false) && (v.isTactical || hasAlert || currentZoom >= 15);
                             return (
                                 <React.Fragment key={v.id}>
                                     {/* Scia storica (mostrata solo per target tattici) */}
