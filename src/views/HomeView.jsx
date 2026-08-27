@@ -1031,14 +1031,17 @@ const HomeView = ({ manager, onTabChange }) => {
                             );
                         })}
 
-                        {/* BERSAGLI AIS FILTRATI */}
+                        {/* BERSAGLI AIS CON GESTIONE LIVELLO DI DETTAGLIO (LOD) */}
                         {(data?.environment?.ais_targets || []).map((v) => {
                             const isMoving = v.isMoving !== undefined ? v.isMoving : (!v.isAnchored && v.sog >= 0.3);
                             const vesselColor = getVesselStatusColor(v);
+                            // Un bersaglio è dettagliato se è in fascia tattica (<= 6 NM o veloce), se ha allarme attivo, o se lo zoom è ravvicinato
+                            const showFullDetails = v.isTactical || (v.dist <= 11112) || (v.risk === "RED" || v.risk === "ORANGE") || (currentZoom >= 16);
 
                             return (
                                 <React.Fragment key={v.id}>
-                                    {v.trail && v.trail.length >= 2 && (
+                                    {/* Scia storica (mostrata solo per target tattici) */}
+                                    {showFullDetails && v.trail && v.trail.length >= 2 && (
                                         <Polyline
                                             positions={v.trail.map(pt => [pt.lat, pt.lon])}
                                             color="#ffffff"
@@ -1051,39 +1054,50 @@ const HomeView = ({ manager, onTabChange }) => {
 
                                     {isMoving ? (
                                         <React.Fragment>
-                                            <Polyline
-                                                positions={[[v.lat, v.lon], getVectorCoords(v.lat, v.lon, v.cog, v.sog)]}
-                                                pathOptions={{
-                                                    color: vesselColor,
-                                                    weight: 3.0,
-                                                    opacity: 0.85,
-                                                    dashArray: "6, 6"
-                                                }}
-                                                interactive={false}
-                                            />
+                                            {/* Vettore a 15 minuti disegnato SOLO per target tattici vicini */}
+                                            {showFullDetails && (
+                                                <Polyline
+                                                    positions={[[v.lat, v.lon], getVectorCoords(v.lat, v.lon, v.cog, v.sog)]}
+                                                    pathOptions={{
+                                                        color: vesselColor,
+                                                        weight: 2.5,
+                                                        opacity: 0.80,
+                                                        dashArray: "6, 6"
+                                                    }}
+                                                    interactive={false}
+                                                />
+                                            )}
+                                            {/* Icona triangolo (sempre presente per indicare rotta e posizione) */}
                                             <Marker
                                                 position={[v.lat, v.lon]}
                                                 icon={movingVesselIcon(v.cog, vesselColor, currentZoom)}
                                                 interactive={false}
                                             />
-                                            <Marker
-                                                position={[v.lat, v.lon]}
-                                                icon={movingVesselLabelIcon(v.name, v.sog, v.cpa, v.tcpa, v.crossDir, v.risk, v.riskMsg, v.age, vesselColor, v.type, currentZoom)}
-                                                interactive={false}
-                                            />
+                                            {/* Etichetta testuale: solo per target vicini/tattici */}
+                                            {showFullDetails && (
+                                                <Marker
+                                                    position={[v.lat, v.lon]}
+                                                    icon={movingVesselLabelIcon(v.name, v.sog, v.cpa, v.tcpa, v.crossDir, v.risk, v.riskMsg, v.age, vesselColor, v.type, currentZoom)}
+                                                    interactive={false}
+                                                />
+                                            )}
                                         </React.Fragment>
                                     ) : (
                                         <React.Fragment>
+                                            {/* Bersaglio all'ancora/fermo: puntino sempre visibile */}
                                             <Marker
                                                 position={[v.lat, v.lon]}
                                                 icon={stationaryVesselIcon(v.risk)}
                                                 interactive={false}
                                             />
-                                            <Marker
-                                                position={[v.lat, v.lon]}
-                                                icon={stationaryVesselLabelIcon(v.name, v.risk, v.riskMsg, v.dist, v.age, v.type, currentZoom)}
-                                                interactive={false}
-                                            />
+                                            {/* Etichetta testuale per fermi: solo se vicini/tattici */}
+                                            {showFullDetails && (
+                                                <Marker
+                                                    position={[v.lat, v.lon]}
+                                                    icon={stationaryVesselLabelIcon(v.name, v.risk, v.riskMsg, v.dist, v.age, v.type, currentZoom)}
+                                                    interactive={false}
+                                                />
+                                            )}
                                             {v.risk === "RED" && v.riskMsg === "SOPRA SUA ANCORA!" && v.anchorLat && v.anchorLon && (
                                                 <React.Fragment>
                                                     <Circle
