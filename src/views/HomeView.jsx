@@ -1031,12 +1031,24 @@ const HomeView = ({ manager, onTabChange }) => {
                             );
                         })}
 
-                        {/* BERSAGLI AIS CON GESTIONE LIVELLO DI DETTAGLIO (LOD) */}
+                        {/* BERSAGLI AIS CON GESTIONE LIVELLO DI DETTAGLIO DIFFERENZIATO (LOD) */}
                         {(data?.environment?.ais_targets || []).map((v) => {
                             const isMoving = v.isMoving !== undefined ? v.isMoving : (!v.isAnchored && v.sog >= 0.3);
                             const vesselColor = getVesselStatusColor(v);
-                            // Un bersaglio è dettagliato se è in fascia tattica (<= 6 NM o veloce), se ha allarme attivo, o se lo zoom è ravvicinato
-                            const showFullDetails = v.isTactical || (v.dist <= 11112) || (v.risk === "RED" || v.risk === "ORANGE") || (currentZoom >= 16);
+                            const hasAlert = (v.risk === "RED" || v.risk === "ORANGE");
+
+                            // FILTRO SELETTIVO:
+                            // 1. Se siamo entrambi all'ancora/fermi: etichette visibili SOLO entro 1 NM (1852m) nella stessa rada
+                            // 2. Se il bersaglio è in movimento: raggio tattico esteso a 6 NM (11112m)
+                            // 3. Se c'è allarme attivo o zoom ravvicinato (>= 17): sempre visibile
+                            let showFullDetails = false;
+                            if (hasAlert || currentZoom >= 17) {
+                                showFullDetails = true;
+                            } else if (isAnchored && !isMoving) {
+                                showFullDetails = (v.dist <= 1852); // Max 1 NM per barche ferme all'ancora
+                            } else {
+                                showFullDetails = v.isTactical || (v.dist <= 11112); // 6 NM per bersagli in rotta
+                            }
 
                             return (
                                 <React.Fragment key={v.id}>
