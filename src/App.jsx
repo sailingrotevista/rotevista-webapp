@@ -1,9 +1,10 @@
 /* --- File: src/App.jsx --- */
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Home, Zap, Wind, SlidersHorizontal, Moon, Sun, Loader2 } from 'lucide-react';
+import { Home, Radar, Zap, Wind, SlidersHorizontal, Moon, Sun, Loader2 } from 'lucide-react';
 import { useBoatData } from './hooks/useBoatData';
 import HomeView from './views/HomeView';
+import AisView from './views/AisView';
 import EnergyView from './views/EnergyView';
 import EnvironmentView from './views/EnvironmentView';
 import AdvancedView from './views/AdvancedView';
@@ -13,7 +14,18 @@ function App() {
   const [selectedTab, setSelectedTab] = useState(0);
   const [direction, setDirection] = useState(0);
   const [isNightMode, setIsNightMode] = useState(false);
+  const [deepLinkMmsi, setDeepLinkMmsi] = useState(null);
   const manager = useBoatData();
+
+  // Rileva se l'app è stata aperta da un link Telegram con parametro ?mmsi=...
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const mmsi = params.get('mmsi');
+    if (mmsi) {
+      setDeepLinkMmsi(mmsi);
+      setSelectedTab(3); // Forza l'apertura immediata del tab AIS
+    }
+  }, []);
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -32,7 +44,7 @@ function App() {
   const onDragEnd = (event, info) => {
     if (event.target.closest('.leaflet-container')) return;
     const swipeThreshold = 50;
-    if (info.offset.x < -swipeThreshold && selectedTab < 3) changeTab(selectedTab + 1);
+    if (info.offset.x < -swipeThreshold && selectedTab < 4) changeTab(selectedTab + 1);
     else if (info.offset.x > swipeThreshold && selectedTab > 0) changeTab(selectedTab - 1);
   };
 
@@ -78,8 +90,8 @@ function App() {
         </div>
       </header>
 
-      {/* MAIN: Margine mt-16 ridotto a mt-12 in landscape per non far scivolare i blocchi */}
-      <main className="flex-1 relative mt-13 landscape:mt-14 pb-32 h-full w-full">
+      {/* MAIN: Margine allineato all'altezza dell'header (h-16 = mt-16) per evitare sovrapposizioni */}
+      <main className="flex-1 relative mt-16 landscape:mt-14 pb-32 h-full w-full">
         <AnimatePresence initial={false} custom={direction}>
           <motion.div
             key={selectedTab}
@@ -96,16 +108,18 @@ function App() {
             {selectedTab === 0 && <HomeView manager={manager} onTabChange={changeTab} />}
             {selectedTab === 1 && <EnergyView manager={manager} />}
             {selectedTab === 2 && <EnvironmentView manager={manager} />}
-            {selectedTab === 3 && <AdvancedView manager={manager} />}
+            {selectedTab === 3 && <AisView manager={manager} isNightMode={isNightMode} initialMmsi={deepLinkMmsi} />}
+            {selectedTab === 4 && <AdvancedView manager={manager} />}
           </motion.div>
         </AnimatePresence>
       </main>
 
-      <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[#1a1a1a]/90 backdrop-blur-2xl border border-white/10 rounded-full px-6 py-3 flex gap-8 shadow-[0_20px_50px_rgba(0,0,0,0.6)] z-[1001]">
+      <nav className="fixed bottom-5 left-1/2 -translate-x-1/2 bg-[#1a1a1a]/90 backdrop-blur-2xl border border-white/10 rounded-full px-4 py-2 flex items-center justify-around w-[92%] max-w-md shadow-[0_20px_50px_rgba(0,0,0,0.6)] z-[1001]">
         <TabItem icon={<Home />} label="Home" isActive={selectedTab === 0} onClick={() => changeTab(0)} />
         <TabItem icon={<Zap />} label="Energia" isActive={selectedTab === 1} onClick={() => changeTab(1)} />
         <TabItem icon={<Wind />} label="Ambiente" isActive={selectedTab === 2} onClick={() => changeTab(2)} />
-        <TabItem icon={<SlidersHorizontal />} label="Extra" isActive={selectedTab === 3} onClick={() => changeTab(3)} />
+        <TabItem icon={<Radar />} label="AIS" isActive={selectedTab === 3} onClick={() => changeTab(3)} />
+        <TabItem icon={<SlidersHorizontal />} label="Extra" isActive={selectedTab === 4} onClick={() => changeTab(4)} />
       </nav>
     </div>
   );
