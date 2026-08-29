@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Polyline, Circle, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
-import { Plus, Minus, Target, Navigation2, ChevronDown, AlertTriangle, X } from 'lucide-react';
+import { Plus, Minus, Target, Navigation2, ChevronDown, AlertTriangle, X, ExternalLink } from 'lucide-react';
 
 // ============================================================
 // 1. CONFIGURAZIONE ICONE AIS & BARCA
@@ -707,14 +707,38 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                                         <span>←</span> LISTA
                                     </button>
                                     <div className="text-center truncate px-1 flex-1">
-                                        <div className="flex items-center justify-center gap-1">
-                                            <span className="text-base">{ship.emoji}</span>
-                                            <h4 className="text-sm font-black uppercase text-white truncate">{selectedTarget.name || 'Sconosciuto'}</h4>
-                                        </div>
-                                        <span className="text-[9.5px] font-bold text-gray-300 uppercase block leading-tight mt-0.5 tracking-tight">
-                                            {ship.label} • MMSI: {selectedTarget.id?.split(':').pop() || '--'} {ageTxt ? `• ${ageTxt}` : ''}
-                                        </span>
+                                    <div className="flex items-center justify-center gap-1">
+                                        <span className="text-base">{ship.emoji}</span>
+                                        <h4 className="text-sm font-black uppercase text-white truncate">{selectedTarget.name || 'Sconosciuto'}</h4>
                                     </div>
+                                    {/* Link diretto a MarineTraffic con MMSI */}
+                                    <div className="flex items-center justify-center gap-1 mt-0.5">
+                                        <span className="text-[9.5px] font-bold text-gray-300 uppercase tracking-tight">
+                                            {ship.label} •
+                                        </span>
+                                        {selectedTarget.id?.includes('mmsi:') ? (
+                                            <a
+                                                href={`https://www.marinetraffic.com/en/ais/embed/zoom:12/centery:0/centerx:0/maptype:1/shownames:false/mmsi:${selectedTarget.id.split(':').pop()}/shipid:0/fleet:/fleet_id:/vtypes:/showmenu:/remember:false`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-[9.5px] font-bold text-cyan-400 hover:text-cyan-300 underline underline-offset-2 flex items-center gap-0.5 active:scale-95 transition-transform"
+                                                title="Apri mappa live MarineTraffic"
+                                            >
+                                                MMSI {selectedTarget.id.split(':').pop()}
+                                                <ExternalLink size={10} className="shrink-0" />
+                                            </a>
+                                        ) : (
+                                            <span className="text-[9.5px] font-bold text-gray-300 uppercase">
+                                                MMSI: --
+                                            </span>
+                                        )}
+                                        {ageTxt && (
+                                            <span className="text-[9.5px] font-bold text-gray-400">
+                                                • {ageTxt}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
                                     <button onClick={handleCloseAll} className="text-gray-400 hover:text-white p-1 shrink-0">
                                         <X size={16} />
                                     </button>
