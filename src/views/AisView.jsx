@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Polyline, Circle, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { Plus, Minus, Target, Navigation2, ChevronDown, AlertTriangle, X } from 'lucide-react';
@@ -161,27 +161,32 @@ const AisMapController = ({
     isTargetSelected,
     cameraSnapshotRef,
     restoreSignal,
-    onZoomChange
+    onZoomChange,
+    onBoundsChange
 }) => {
     const map = useMap();
     const isManualZoomOverrideRef = useRef(false);
 
+    // Aggiorna confini visibili e livello di zoom per ottimizzazione GPU
+    const updateViewport = useCallback(() => {
+        if (onZoomChange) onZoomChange(map.getZoom());
+        if (onBoundsChange) onBoundsChange(map.getBounds().pad(0.15)); // +15% di margine per scorrimento fluido
+    }, [map, onZoomChange, onBoundsChange]);
+
     useMapEvents({
         dragstart: () => setAutoCenter(false),
         zoomstart: (e) => {
-            // Riconosce il pinch-to-zoom manuale
             if (e && e.originalEvent) {
                 isManualZoomOverrideRef.current = true;
             }
         },
-        zoomend: () => {
-            if (onZoomChange) onZoomChange(map.getZoom());
-        }
+        zoomend: updateViewport,
+        moveend: updateViewport
     });
 
     useEffect(() => {
-        if (onZoomChange) onZoomChange(map.getZoom());
-    }, [map, onZoomChange]);
+        updateViewport();
+    }, [updateViewport]);
 
     // Inseguimento continuo della barca propria e applicazione dello Smart Zoom automatico
     useEffect(() => {
@@ -273,6 +278,7 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
     const [selectedTarget, setSelectedTarget] = useState(null);
     const [isListOpen, setIsListOpen] = useState(false);
     const [currentZoom, setCurrentZoom] = useState(14);
+    const [mapBounds, setMapBounds] = useState(null); // Confini visibili dello schermo
 
     // Memoria sincrona dello stato della mappa precedente all'ispezione
     const cameraSnapshotRef = useRef(null);
@@ -381,7 +387,7 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
         }
     };
 
-    // --- ORDINAMENTO BERSAGLI PER PERICOLOSITÀ ---
+    // --- ORDINAMENTO BERSAGLI PER PERICOLOSITÀ (Lista completa per il menu) ---
     const sortedTargets = useMemo(() => {
         const raw = data?.environment?.ais_targets || [];
         return [...raw].sort((a, b) => {
@@ -396,6 +402,16 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
             return distA - distB;
         });
     }, [data?.environment?.ais_targets]);
+
+    // Viewport Culling: filtra solo i bersagli effettivamente visibili a schermo per alleggerire il DOM
+    const visibleMapTargets = useMemo(() => {
+        if (!mapBounds) return sortedTargets;
+        return sortedTargets.filter(v => {
+            // I bersagli in allarme rosso o selezionati vengono renderizzati sempre
+            if (v.risk === 'RED' || selectedTarget?.id === v.id) return true;
+            return mapBounds.contains([v.lat, v.lon]);
+        });
+    }, [sortedTargets, mapBounds, selectedTarget]);
 
     // Gestione Deep Link Telegram: aggancia e inquadra la nave all'arrivo dei dati
     useEffect(() => {
@@ -420,12 +436,13 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
     return (
         <div className="relative w-full h-[calc(100vh-4rem)] landscape:h-[calc(100vh-3.5rem)] overflow-hidden bg-[#0d1117] text-white">
             
-            {/* MAPPA CARTOGRAFICA A TUTTO SCHERMO */}
+            {/* MAPPA CARTOGRAFICA A TUTTO SCHERMO CON RENDERING CANVAS GPU */}
             <div className="absolute inset-0 z-0">
                 <MapContainer
                     center={ownCoords}
                     zoom={14}
                     maxZoom={20}
+                    preferCanvas={true} // Sposta il rendering di linee e cerchi su Canvas WebGL/GPU
                     style={{ height: '100%', width: '100%' }}
                     zoomControl={false}
                     attributionControl={false}
@@ -473,6 +490,7 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                         cameraSnapshotRef={cameraSnapshotRef}
                         restoreSignal={restoreSignal}
                         onZoomChange={setCurrentZoom}
+                        onBoundsChange={setMapBounds}
                     />
 
                     {/* RANGE RINGS DINAMICI DA ZOOM AD ALTO CONTRASTO (Blu scuro di Giorno / Ciano di Notte) */}
@@ -525,20 +543,24 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                         );
                     })}
 
-                    {/* BERSAGLI AIS */}
-                    {sortedTargets.map((v) => {
+                    {/* BERSAGLI AIS CON OTTIMIZZAZIONE LOD E VIEWPORT CULLING */}
+                    {visibleMapTargets.map((v) => {
                         const isMoving = v.isMoving !== undefined ? v.isMoving : (!v.isAnchored && v.sog >= 0.3);
                         const isSelected = selectedTarget?.id === v.id;
                         const ship = getShipTypeInfo(v.type);
-                        const vesselColor = ship.color; // Colore MarineTraffic per scia e vettore
+                        const vesselColor = ship.color;
 
                         const isRedAlert = v.risk === 'RED';
                         const isOrangeWarn = v.risk === 'ORANGE';
 
+                        // LOD Tattico: disegna scia e vettore solo per bersagli vicini (<3 NM) o in allarme
+                        const shouldRenderTrail = v.trail && v.trail.length >= 2 && (isRedAlert || isOrangeWarn || isSelected || v.dist <= 3704);
+                        const shouldRenderVector = isMoving && (isRedAlert || isOrangeWarn || isSelected || v.dist <= 5556);
+
                         return (
                             <React.Fragment key={v.id}>
-                                {/* Scia Storica nel colore MarineTraffic della nave */}
-                                {v.trail && v.trail.length >= 2 && (
+                                {/* Scia Storica (solo se tatticamente rilevante) */}
+                                {shouldRenderTrail && (
                                     <Polyline
                                         positions={v.trail.map(pt => [pt.lat, pt.lon])}
                                         color={vesselColor}
@@ -549,8 +571,8 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                                     />
                                 )}
 
-                                {/* Vettore di prua a 15 min nel colore MarineTraffic */}
-                                {isMoving && (
+                                {/* Vettore di prua a 15 min (solo per target tattici o in allarme) */}
+                                {shouldRenderVector && (
                                     <Polyline
                                         positions={[[v.lat, v.lon], getProjectedCoords(v.lat, v.lon, v.cog, v.sog, 15)]}
                                         color={vesselColor}
