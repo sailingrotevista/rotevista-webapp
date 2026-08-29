@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Polyline, Circle, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
-import { Plus, Minus, Target, Navigation2, ChevronDown, AlertTriangle, X, ExternalLink } from 'lucide-react';
+import { Plus, Minus, Target, Navigation2, ChevronDown, AlertTriangle, X, Copy, Check } from 'lucide-react';
 
 // ============================================================
 // 1. CONFIGURAZIONE ICONE AIS & BARCA
@@ -279,6 +279,31 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
     const [isListOpen, setIsListOpen] = useState(false);
     const [currentZoom, setCurrentZoom] = useState(14);
     const [mapBounds, setMapBounds] = useState(null); // Confini visibili dello schermo
+    const [isMmsiCopied, setIsMmsiCopied] = useState(false); // Feedback copia MMSI
+
+    /** Copia sicura dell'MMSI negli appunti (compatibile con iOS/Android/Desktop) */
+    const handleCopyMmsi = (mmsiNumber) => {
+        if (!mmsiNumber) return;
+
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(mmsiNumber).then(() => {
+                setIsMmsiCopied(true);
+                setTimeout(() => setIsMmsiCopied(false), 2000);
+            });
+        } else {
+            const textArea = document.createElement("textarea");
+            textArea.value = mmsiNumber;
+            textArea.style.position = "fixed";
+            textArea.style.opacity = "0";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            document.execCommand('copy');
+            setIsMmsiCopied(true);
+            setTimeout(() => setIsMmsiCopied(false), 2000);
+            document.body.removeChild(textArea);
+        }
+    };
 
     // Memoria sincrona dello stato della mappa precedente all'ispezione
     const cameraSnapshotRef = useRef(null);
@@ -711,22 +736,31 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                                         <span className="text-base">{ship.emoji}</span>
                                         <h4 className="text-sm font-black uppercase text-white truncate">{selectedTarget.name || 'Sconosciuto'}</h4>
                                     </div>
-                                    {/* Link diretto a MarineTraffic con MMSI */}
+                                    {/* Tasto Copia Rapida MMSI negli Appunti */}
                                     <div className="flex items-center justify-center gap-1 mt-0.5">
                                         <span className="text-[9.5px] font-bold text-gray-300 uppercase tracking-tight">
                                             {ship.label} •
                                         </span>
                                         {selectedTarget.id?.includes('mmsi:') ? (
-                                            <a
-                                                href={`https://www.marinetraffic.com/en/ais/embed/zoom:12/centery:0/centerx:0/maptype:1/shownames:false/mmsi:${selectedTarget.id.split(':').pop()}/shipid:0/fleet:/fleet_id:/vtypes:/showmenu:/remember:false`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-[9.5px] font-bold text-cyan-400 hover:text-cyan-300 underline underline-offset-2 flex items-center gap-0.5 active:scale-95 transition-transform"
-                                                title="Apri mappa live MarineTraffic"
+                                            <button
+                                                onClick={() => handleCopyMmsi(selectedTarget.id.split(':').pop())}
+                                                className={`text-[9.5px] font-bold uppercase flex items-center gap-1 cursor-pointer active:scale-95 transition-all px-1 py-0.5 rounded-md ${
+                                                    isMmsiCopied ? 'text-green-400 bg-green-500/10' : 'text-cyan-400 hover:text-cyan-300 bg-white/5'
+                                                }`}
+                                                title="Tocca per copiare l'MMSI negli appunti"
                                             >
-                                                MMSI {selectedTarget.id.split(':').pop()}
-                                                <ExternalLink size={10} className="shrink-0" />
-                                            </a>
+                                                {isMmsiCopied ? (
+                                                    <>
+                                                        <Check size={11} className="shrink-0 text-green-400" />
+                                                        <span>Copiato!</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Copy size={10} className="shrink-0 opacity-80" />
+                                                        <span>MMSI {selectedTarget.id.split(':').pop()}</span>
+                                                    </>
+                                                )}
+                                            </button>
                                         ) : (
                                             <span className="text-[9.5px] font-bold text-gray-300 uppercase">
                                                 MMSI: --
@@ -850,7 +884,7 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                 </div>
             )}
 
-        </div>
+            </div>
     );
 };
 
