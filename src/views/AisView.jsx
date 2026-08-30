@@ -90,6 +90,31 @@ const getAisSmartZoom = (sog) => {
     return 17;                 // Ormeggio / manovra stretta (~500m)
 };
 
+/** Formattazione duale della distanza (Metri sotto 1 NM, Miglia nautiche sopra 1 NM) */
+const formatNavDistance = (meters) => {
+    if (meters === undefined || meters === null || isNaN(meters)) return '--';
+    const m = Math.round(meters);
+    const nm = meters / 1852.0;
+
+    if (m < 500) {
+        return `${m} m`;
+    } else if (m < 1852) {
+        return `${m} m (${nm.toFixed(1)} NM)`;
+    } else {
+        return `${nm.toFixed(1)} NM (${(m / 1000).toFixed(1)} km)`;
+    }
+};
+
+/** Versione compatta per lista e badge */
+const formatNavDistanceShort = (meters) => {
+    if (meters === undefined || meters === null || isNaN(meters)) return '--';
+    const m = Math.round(meters);
+    if (m < 1852) {
+        return `${m}m`;
+    }
+    return `${(meters / 1852.0).toFixed(1)} NM`;
+};
+
 /** Restituisce i 3 cerchi di distanza dinamici in base allo zoom attuale */
 const getDynamicRangeRings = (zoom) => {
     if (zoom >= 19) return [{ r: 15, label: "15m" }, { r: 30, label: "30m" }, { r: 45, label: "45m" }];
@@ -778,7 +803,7 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                                     </button>
                                 </div>
 
-                                {/* Griglia Metriche Principali */}
+                                {/* Griglia Metriche Principali con Distanze Duali Intelligenti */}
                                 <div className="grid grid-cols-2 gap-1.5 text-[10px] shrink-0">
                                     <div className="bg-white/5 p-2 rounded-xl">
                                         <span className="text-[7.5px] text-gray-400 uppercase block">SOG / COG</span>
@@ -786,15 +811,21 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                                     </div>
                                     <div className="bg-white/5 p-2 rounded-xl">
                                         <span className="text-[7.5px] text-gray-400 uppercase block">Distanza</span>
-                                        <span className="font-bold text-white text-xs">{selectedTarget.dist} m</span>
+                                        <span className="font-bold text-white text-xs truncate" title={formatNavDistance(selectedTarget.dist)}>
+                                            {formatNavDistance(selectedTarget.dist)}
+                                        </span>
                                     </div>
                                     <div className="bg-white/5 p-2 rounded-xl">
                                         <span className="text-[7.5px] text-gray-400 uppercase block">CPA Minimo</span>
-                                        <span className="font-bold text-cyan-400 text-xs">{selectedTarget.cpa !== null && selectedTarget.cpa !== undefined ? `${selectedTarget.cpa} m` : '--'}</span>
+                                        <span className="font-bold text-cyan-400 text-xs truncate" title={formatNavDistance(selectedTarget.cpa)}>
+                                            {formatNavDistance(selectedTarget.cpa)}
+                                        </span>
                                     </div>
                                     <div className="bg-white/5 p-2 rounded-xl">
                                         <span className="text-[7.5px] text-gray-400 uppercase block">Tempo a CPA</span>
-                                        <span className="font-bold text-cyan-400 text-xs">{selectedTarget.tcpa !== null && selectedTarget.tcpa !== undefined && selectedTarget.tcpa >= 0 ? `${Math.round(selectedTarget.tcpa)} min` : '--'}</span>
+                                        <span className="font-bold text-cyan-400 text-xs">
+                                            {selectedTarget.tcpa !== null && selectedTarget.tcpa !== undefined && selectedTarget.tcpa >= 0 ? `${Math.round(selectedTarget.tcpa)} min` : '--'}
+                                        </span>
                                     </div>
                                 </div>
 
@@ -867,7 +898,7 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
 
                                             <div className="flex flex-col items-end text-right shrink-0 leading-none">
                                                 <span className={`text-xs font-black ${isRed ? 'text-red-400' : isOrange ? 'text-orange-400' : 'text-cyan-400'}`}>
-                                                    {v.cpa !== null && v.cpa !== undefined ? `${v.cpa}m` : `${v.dist}m`}
+                                                    {v.cpa !== null && v.cpa !== undefined ? `CPA: ${formatNavDistanceShort(v.cpa)}` : formatNavDistanceShort(v.dist)}
                                                 </span>
                                                 {v.tcpa !== null && v.tcpa >= 0 && (
                                                     <span className="text-[8.5px] font-bold text-gray-300 mt-1">
