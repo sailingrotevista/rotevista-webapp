@@ -411,6 +411,31 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
     // Smart Zoom tattico ricalcolato sulla velocità propria
     const smartZoom = useMemo(() => getAisSmartZoom(ownSog), [ownSog]);
 
+    // --- 1. ORDINAMENTO BERSAGLI PER PERICOLOSITÀ (Dichiarato prima per evitare ReferenceError) ---
+    const sortedTargets = useMemo(() => {
+        const raw = data?.environment?.ais_targets || [];
+        return [...raw].sort((a, b) => {
+            const riskWeight = { RED: 3, ORANGE: 2, GREY: 1 };
+            const weightA = riskWeight[a.risk] || 1;
+            const weightB = riskWeight[b.risk] || 1;
+
+            if (weightA !== weightB) return weightB - weightA;
+
+            const distA = (a.cpa !== null && a.cpa !== undefined && a.cpa >= 0) ? a.cpa : a.dist;
+            const distB = (b.cpa !== null && b.cpa !== undefined && b.cpa >= 0) ? b.cpa : b.dist;
+            return distA - distB;
+        });
+    }, [data?.environment?.ais_targets]);
+
+    // Viewport Culling: filtra solo i bersagli visibili a schermo per alleggerire la GPU
+    const visibleMapTargets = useMemo(() => {
+        if (!mapBounds) return sortedTargets;
+        return sortedTargets.filter(v => {
+            if (v.risk === 'RED' || selectedTarget?.id === v.id) return true;
+            return mapBounds.contains([v.lat, v.lon]);
+        });
+    }, [sortedTargets, mapBounds, selectedTarget]);
+
     // Oggetto Barca Propria per la scheda telemetria
     const ownShipTarget = useMemo(() => ({
         id: 'self',
@@ -422,13 +447,21 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
         cog: heading
     }), [ownCoords, ownSog, heading]);
 
-    /** Centro degli anelli: Bersaglio AIS selezionato oppure la propria Barca */
+    // Bersaglio Attivo con AGGIORNAMENTO LIVE DEI DATI (Sincronizzato in tempo reale a ogni polling)
+    const activeTarget = useMemo(() => {
+        if (!selectedTarget) return null;
+        if (selectedTarget.isOwnShip) return ownShipTarget;
+        const liveMatch = sortedTargets.find(t => t.id === selectedTarget.id);
+        return liveMatch || selectedTarget;
+    }, [selectedTarget, sortedTargets, ownShipTarget]);
+
+    /** Centro degli anelli: Bersaglio AIS selezionato (live) oppure la propria Barca */
     const rangeRingsCenter = useMemo(() => {
-        if (selectedTarget && !selectedTarget.isOwnShip && selectedTarget.lat && selectedTarget.lon) {
-            return { lat: selectedTarget.lat, lon: selectedTarget.lon };
+        if (activeTarget && !activeTarget.isOwnShip && activeTarget.lat && activeTarget.lon) {
+            return { lat: activeTarget.lat, lon: activeTarget.lon };
         }
         return { lat: ownCoords[0], lon: ownCoords[1] };
-    }, [selectedTarget, ownCoords]);
+    }, [activeTarget, ownCoords]);
 
     // --- SEGMENTAZIONE SCIA BARCA PROPRIA (Solo Vela e Motore, esclude le tracce di fonda) ---
     const ownTrailSegments = useMemo(() => {
@@ -513,32 +546,6 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
             setRestoreSignal(prev => prev + 1);
         }
     };
-
-    // --- ORDINAMENTO BERSAGLI PER PERICOLOSITÀ (Lista completa per il menu) ---
-    const sortedTargets = useMemo(() => {
-        const raw = data?.environment?.ais_targets || [];
-        return [...raw].sort((a, b) => {
-            const riskWeight = { RED: 3, ORANGE: 2, GREY: 1 };
-            const weightA = riskWeight[a.risk] || 1;
-            const weightB = riskWeight[b.risk] || 1;
-
-            if (weightA !== weightB) return weightB - weightA;
-
-            const distA = (a.cpa !== null && a.cpa !== undefined && a.cpa >= 0) ? a.cpa : a.dist;
-            const distB = (b.cpa !== null && b.cpa !== undefined && b.cpa >= 0) ? b.cpa : b.dist;
-            return distA - distB;
-        });
-    }, [data?.environment?.ais_targets]);
-
-    // Viewport Culling: filtra solo i bersagli effettivamente visibili a schermo per alleggerire il DOM
-    const visibleMapTargets = useMemo(() => {
-        if (!mapBounds) return sortedTargets;
-        return sortedTargets.filter(v => {
-            // I bersagli in allarme rosso o selezionati vengono renderizzati sempre
-            if (v.risk === 'RED' || selectedTarget?.id === v.id) return true;
-            return mapBounds.contains([v.lat, v.lon]);
-        });
-    }, [sortedTargets, mapBounds, selectedTarget]);
 
     // Gestione Deep Link Telegram: aggancia e inquadra la nave all'arrivo dei dati
     useEffect(() => {
@@ -847,10 +854,10 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                     }`}
                 >
                     
-                    {/* SCENARIO A: SCHEDA DETTAGLIO BERSAGLIO O SCHEDA BARCA PROPRIA */}
-                    {selectedTarget ? (() => {
+                    {/* SCENARIO A: SCHEDA DETTAGLIO BERSAGLIO O SCHEDA BARCA PROPRIA (DATI LIVE) */}
+                    {activeTarget ? (() => {
                         // 1. SCHEDA TELEMETRIA E VIAGGIO BARCA PROPRIA (ROTEVISTA)
-                        if (selectedTarget.isOwnShip) {
+                        if (activeTarget.isOwnShip) {
                             const engineNmVal = parseFloat(data?.trip?.engine_nm) || 0;
                             const sailNmVal = parseFloat(data?.trip?.sail_nm) || 0;
                             const totalNmVal = engineNmVal + sailNmVal;
@@ -923,10 +930,10 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                             );
                         }
 
-                        // 2. SCHEDA DETTAGLIO BERSAGLIO AIS NORMALE
-                        const ship = getShipTypeInfo(selectedTarget.type);
-                        const ageTxt = selectedTarget.age !== undefined
-                            ? (selectedTarget.age < 60 ? `${selectedTarget.age}s fa` : `${Math.round(selectedTarget.age / 60)}m fa`)
+                        // 2. SCHEDA DETTAGLIO BERSAGLIO AIS NORMALE (CON DATI AGGIORNATI IN TEMPO REALE)
+                        const ship = getShipTypeInfo(activeTarget.type);
+                        const ageTxt = activeTarget.age !== undefined
+                            ? (activeTarget.age < 60 ? `${activeTarget.age}s fa` : `${Math.round(activeTarget.age / 60)}m fa`)
                             : '';
 
                         return (
@@ -944,7 +951,7 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                                         <div className="flex items-center justify-center gap-1.5 truncate px-2">
                                             <span className="text-base shrink-0">{ship.emoji}</span>
                                             <h4 className="text-sm font-black uppercase text-white truncate tracking-tight">
-                                                {selectedTarget.name || 'Sconosciuto'}
+                                                {activeTarget.name || 'Sconosciuto'}
                                             </h4>
                                         </div>
                                         <button
@@ -959,9 +966,9 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                                     <div className="flex items-center justify-center gap-1.5 text-[9.5px] font-bold text-gray-300 uppercase tracking-tight">
                                         <span>{ship.label}</span>
                                         <span className="text-gray-600">•</span>
-                                        {selectedTarget.id?.includes('mmsi:') ? (
+                                        {activeTarget.id?.includes('mmsi:') ? (
                                             <button
-                                                onClick={() => handleCopyMmsi(selectedTarget.id.split(':').pop())}
+                                                onClick={() => handleCopyMmsi(activeTarget.id.split(':').pop())}
                                                 className={`flex items-center gap-1 cursor-pointer active:scale-95 transition-all px-1.5 py-0.5 rounded-md border ${
                                                     isMmsiCopied
                                                         ? 'text-green-400 bg-green-500/15 border-green-500/30'
@@ -977,7 +984,7 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                                                 ) : (
                                                     <>
                                                         <Copy size={9} className="shrink-0 opacity-80" />
-                                                        <span>MMSI {selectedTarget.id.split(':').pop()}</span>
+                                                        <span>MMSI {activeTarget.id.split(':').pop()}</span>
                                                     </>
                                                 )}
                                             </button>
@@ -993,45 +1000,45 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                                     </div>
                                 </div>
 
-                                {/* Griglia Metriche Principali con Distanze Duali Intelligenti */}
+                                {/* Griglia Metriche Live (SOG, Distanza, CPA e TCPA aggiornati ogni 5s) */}
                                 <div className="grid grid-cols-2 gap-1.5 text-[10px] shrink-0">
                                     <div className="bg-white/5 p-2 rounded-xl">
                                         <span className="text-[7.5px] text-gray-400 uppercase block">SOG / COG</span>
-                                        <span className="font-bold text-white text-xs">{selectedTarget.sog} kn @ {selectedTarget.cog}°</span>
+                                        <span className="font-bold text-white text-xs">{activeTarget.sog} kn @ {activeTarget.cog}°</span>
                                     </div>
                                     <div className="bg-white/5 p-2 rounded-xl">
                                         <span className="text-[7.5px] text-gray-400 uppercase block">Distanza</span>
-                                        <span className="font-bold text-white text-xs truncate" title={formatNavDistance(selectedTarget.dist)}>
-                                            {formatNavDistance(selectedTarget.dist)}
+                                        <span className="font-bold text-white text-xs truncate" title={formatNavDistance(activeTarget.dist)}>
+                                            {formatNavDistance(activeTarget.dist)}
                                         </span>
                                     </div>
                                     <div className="bg-white/5 p-2 rounded-xl">
                                         <span className="text-[7.5px] text-gray-400 uppercase block">CPA Minimo</span>
-                                        <span className="font-bold text-cyan-400 text-xs truncate" title={formatNavDistance(selectedTarget.cpa)}>
-                                            {formatNavDistance(selectedTarget.cpa)}
+                                        <span className="font-bold text-cyan-400 text-xs truncate" title={formatNavDistance(activeTarget.cpa)}>
+                                            {formatNavDistance(activeTarget.cpa)}
                                         </span>
                                     </div>
                                     <div className="bg-white/5 p-2 rounded-xl">
                                         <span className="text-[7.5px] text-gray-400 uppercase block">Tempo a CPA</span>
                                         <span className="font-bold text-cyan-400 text-xs">
-                                            {selectedTarget.tcpa !== null && selectedTarget.tcpa !== undefined && selectedTarget.tcpa >= 0 ? `${Math.round(selectedTarget.tcpa)} min` : '--'}
+                                            {activeTarget.tcpa !== null && activeTarget.tcpa !== undefined && activeTarget.tcpa >= 0 ? `${Math.round(activeTarget.tcpa)} min` : '--'}
                                         </span>
                                     </div>
                                 </div>
 
-                                {/* Box Avvistamento a Vista (Dove guardare a occhio nudo) */}
-                                {selectedTarget.sightingTxt && (
+                                {/* Box Avvistamento a Vista */}
+                                {activeTarget.sightingTxt && (
                                     <div className="bg-cyan-500/10 border border-cyan-500/30 px-2.5 py-1.5 rounded-xl text-[9px] text-cyan-200 shrink-0 flex items-center gap-1.5">
                                         <span className="text-cyan-400 font-black uppercase shrink-0">👀 Vista:</span>
-                                        <span className="truncate">{selectedTarget.sightingTxt}</span>
+                                        <span className="truncate">{activeTarget.sightingTxt}</span>
                                     </div>
                                 )}
 
-                                {/* Box Analisi Incrocio & Regole COLREGs con ritorno a capo automatico */}
-                                {selectedTarget.crossDir && (
+                                {/* Box Analisi Incrocio & Regole COLREGs */}
+                                {activeTarget.crossDir && (
                                     <div className="bg-white/5 p-2 rounded-xl text-[9px] text-gray-300 border border-white/5 overflow-y-auto leading-normal whitespace-pre-line max-h-20">
                                         <span className="text-orange-400 font-bold uppercase block mb-1">Analisi Incrocio:</span>
-                                        {selectedTarget.crossDir}
+                                        {activeTarget.crossDir}
                                     </div>
                                 )}
                             </div>
