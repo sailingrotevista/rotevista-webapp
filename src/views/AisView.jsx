@@ -7,9 +7,9 @@ import { Plus, Minus, Target, Navigation2, ChevronDown, AlertTriangle, X, Copy, 
 // 1. CONFIGURAZIONE ICONE AIS & BARCA
 // ============================================================
 
-const ownBoatAisIcon = (heading) => new L.DivIcon({
+const ownBoatAisIcon = (heading, color = '#38bdf8') => new L.DivIcon({
     html: `
-        <div style="transform: rotate(${heading || 0}deg); font-size: 22px; color: #38bdf8; filter: drop-shadow(0 0 5px rgba(0,0,0,0.9)); display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">
+        <div style="transform: rotate(${heading || 0}deg); font-size: 22px; color: ${color}; filter: drop-shadow(0 0 5px rgba(0,0,0,0.9)); display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">
             ▲
         </div>
     `,
@@ -115,6 +115,16 @@ const formatNavDistanceShort = (meters) => {
     return `${(meters / 1852.0).toFixed(1)} NM`;
 };
 
+/** Formattazione coordinate nautiche (Gradi e Primi decimali) */
+const formatNautic = (val, isLat) => {
+    if (val === undefined || val === null || isNaN(val)) return '';
+    const hemi = isLat ? (val >= 0 ? "N" : "S") : (val >= 0 ? "E" : "W");
+    const absVal = Math.abs(val);
+    const deg = Math.floor(absVal);
+    const min = ((absVal - deg) * 60).toFixed(4);
+    return `${deg}° ${min}'${hemi}`;
+};
+
 /** Restituisce i 3 cerchi di distanza dinamici in base allo zoom attuale */
 const getDynamicRangeRings = (zoom) => {
     if (zoom >= 19) return [{ r: 15, label: "15m" }, { r: 30, label: "30m" }, { r: 45, label: "45m" }];
@@ -179,6 +189,7 @@ const threatVesselLabelIcon = (vessel) => {
 // ============================================================
 const AisMapController = ({
     centerCoords,
+    hasValidGps,
     autoCenter,
     setAutoCenter,
     smartZoom,
@@ -191,6 +202,7 @@ const AisMapController = ({
 }) => {
     const map = useMap();
     const isManualZoomOverrideRef = useRef(false);
+    const isFirstLoadRef = useRef(true);
 
     // Aggiorna confini visibili e livello di zoom per ottimizzazione GPU
     const updateViewport = useCallback(() => {
@@ -199,11 +211,14 @@ const AisMapController = ({
     }, [map, onZoomChange, onBoundsChange]);
 
     useMapEvents({
-        dragstart: () => setAutoCenter(false),
-        zoomstart: (e) => {
-            if (e && e.originalEvent) {
-                isManualZoomOverrideRef.current = true;
-            }
+        dragstart: () => {
+            map.stop();
+            setAutoCenter(false);
+        },
+        zoomstart: () => {
+            // Qualsiasi zoom o pinch a due dita dell'utente disattiva l'inseguimento e segna l'override
+            isManualZoomOverrideRef.current = true;
+            setAutoCenter(false);
         },
         zoomend: updateViewport,
         moveend: updateViewport
@@ -213,20 +228,49 @@ const AisMapController = ({
         updateViewport();
     }, [updateViewport]);
 
-    // Inseguimento continuo della barca propria e applicazione dello Smart Zoom automatico
+    // Memoria dell'ultima posizione in cui la mappa è stata centrata
+    const lastCenteredPosRef = useRef(null);
+
+    // Inizializzazione istantanea al primo pacchetto GPS e inseguimento a Zona Morta (Dead-Band)
     useEffect(() => {
         if (!autoCenter || centerCoords[0] === 0 || isTargetSelected) return;
 
+        // 1. Primo caricamento: salta istantaneamente alle coordinate GPS reali
+        if (isFirstLoadRef.current && hasValidGps) {
+            map.setView(centerCoords, smartZoom, { animate: false });
+            lastCenteredPosRef.current = centerCoords;
+            isFirstLoadRef.current = false;
+            updateViewport();
+            return;
+        }
+
         const currentZoom = map.getZoom();
 
+        // 2. Se lo Smart Zoom è cambiato di livello, esegui lo zoom morbido
         if (!isManualZoomOverrideRef.current && currentZoom !== smartZoom) {
-            // Applica lo Smart Zoom dinamico calcolato dalla velocità
             map.flyTo(centerCoords, smartZoom, { duration: 0.8 });
-        } else {
-            // Scorrimento fluido sulla posizione GPS
-            map.panTo(centerCoords, { animate: true, duration: 0.5 });
+            lastCenteredPosRef.current = centerCoords;
+            return;
         }
-    }, [autoCenter, centerCoords, smartZoom, isTargetSelected, map]);
+
+        // 3. Calcolo Dead-Band: sposta la mappa SOLO se la barca è uscita dalla zona centrale
+        if (!lastCenteredPosRef.current) {
+            lastCenteredPosRef.current = centerCoords;
+        }
+
+        const dLat = (centerCoords[0] - lastCenteredPosRef.current[0]) * 111139;
+        const dLon = (centerCoords[1] - lastCenteredPosRef.current[1]) * 111139 * Math.cos(centerCoords[0] * Math.PI / 180);
+        const distFromCenter = Math.sqrt(dLat * dLat + dLon * dLon);
+
+        // Soglia di tolleranza: 25m a zoom ravvicinato, 50m a zoom crociera, 120m in altura
+        const deadBandThreshold = currentZoom >= 16 ? 25 : currentZoom >= 14 ? 45 : 100;
+
+        if (distFromCenter >= deadBandThreshold) {
+            // Scivolamento morbido solo al superamento della zona morta
+            map.panTo(centerCoords, { animate: true, duration: 0.8, easeLinearity: 0.25 });
+            lastCenteredPosRef.current = centerCoords;
+        }
+    }, [autoCenter, centerCoords, hasValidGps, smartZoom, isTargetSelected, map, updateViewport]);
 
     // Spostamento animato con offset ottico per centrare la nave nello spazio libero tra scheda e navbar
     useEffect(() => {
@@ -264,32 +308,38 @@ const AisMapController = ({
     };
 
     return (
-        /* Pulsanti Zoom e Centra rialzati per evitare overlap con Navbar App e Safari bar */
-        <div className="absolute right-3 bottom-[175px] flex flex-col gap-2.5 z-[1000]">
+        /* Pulsanti Mappa: quota sicura a bottom-48 in verticale per superare Safari, a sinistra in landscape */
+        <div className="absolute right-3 bottom-48 landscape:right-auto landscape:left-3 landscape:bottom-auto landscape:top-1/2 landscape:-translate-y-1/2 flex flex-col gap-2.5 z-[1000]">
             <button
                 onClick={() => handleManualZoom('in')}
-                className="w-12 h-12 rounded-2xl bg-[#161b22]/90 backdrop-blur-xl border border-white/20 flex items-center justify-center text-white active:scale-95 shadow-2xl"
+                className="w-11 h-11 landscape:w-10 landscape:h-10 rounded-2xl bg-[#161b22]/90 backdrop-blur-xl border border-white/20 flex items-center justify-center text-white active:scale-95 shadow-2xl"
             >
-                <Plus size={22} />
+                <Plus size={20} />
             </button>
             <button
                 onClick={() => handleManualZoom('out')}
-                className="w-12 h-12 rounded-2xl bg-[#161b22]/90 backdrop-blur-xl border border-white/20 flex items-center justify-center text-white active:scale-95 shadow-2xl"
+                className="w-11 h-11 landscape:w-10 landscape:h-10 rounded-2xl bg-[#161b22]/90 backdrop-blur-xl border border-white/20 flex items-center justify-center text-white active:scale-95 shadow-2xl"
             >
-                <Minus size={22} />
+                <Minus size={20} />
             </button>
             <button
                 onClick={() => {
-                    // Il tasto Centra riattiva sia l'inseguimento sia lo Smart Zoom automatico
-                    isManualZoomOverrideRef.current = false;
-                    setAutoCenter(true);
-                    map.flyTo(centerCoords, smartZoom, { duration: 0.6 });
+                    if (!autoCenter) {
+                        // 1° Click: Riporta la visuale sulla barca MANTENENDO lo zoom attuale dell'utente
+                        setAutoCenter(true);
+                        map.flyTo(centerCoords, map.getZoom(), { duration: 0.5 });
+                    } else {
+                        // 2° Click (già centrato): Attiva lo Smart Zoom dinamico basato sulla velocità
+                        isManualZoomOverrideRef.current = false;
+                        map.flyTo(centerCoords, smartZoom, { duration: 0.6 });
+                    }
                 }}
-                className={`w-12 h-12 rounded-2xl border transition-all flex items-center justify-center shadow-2xl active:scale-95 ${
+                className={`w-11 h-11 landscape:w-10 landscape:h-10 rounded-2xl border transition-all flex items-center justify-center shadow-2xl active:scale-95 ${
                     autoCenter ? 'bg-cyan-500/40 border-cyan-400 text-white shadow-[0_0_15px_rgba(6,182,212,0.4)]' : 'bg-[#161b22]/90 border-white/20 text-gray-400'
                 }`}
+                title={autoCenter ? "Tocca per attivare Smart Zoom dinamico" : "Tocca per centrare sulla barca"}
             >
-                <Target size={22} />
+                <Target size={20} />
             </button>
         </div>
     );
@@ -297,6 +347,18 @@ const AisMapController = ({
 // ============================================================
 // 3. VISTA AIS PRINCIPALE
 // ============================================================
+// Recupero dell'ultimo punto GPS reale memorizzato per evitare il fallback fisso
+const getLastKnownGps = () => {
+    try {
+        const saved = localStorage.getItem('rotevista_last_known_gps');
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            if (parsed.lat && parsed.lon) return [parseFloat(parsed.lat), parseFloat(parsed.lon)];
+        }
+    } catch (e) {}
+    return [37.96, 23.48];
+};
+
 const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
     const { data } = manager;
     const [autoCenter, setAutoCenter] = useState(true);
@@ -305,6 +367,16 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
     const [currentZoom, setCurrentZoom] = useState(14);
     const [mapBounds, setMapBounds] = useState(null); // Confini visibili dello schermo
     const [isMmsiCopied, setIsMmsiCopied] = useState(false); // Feedback copia MMSI
+
+    // Salva l'ultimo punto GPS valido in memoria locale a ogni ricezione dati
+    useEffect(() => {
+        if (data?.gps?.lat && data?.gps?.lon) {
+            localStorage.setItem('rotevista_last_known_gps', JSON.stringify({
+                lat: data.gps.lat,
+                lon: data.gps.lon
+            }));
+        }
+    }, [data?.gps?.lat, data?.gps?.lon]);
 
     /** Copia sicura dell'MMSI negli appunti (compatibile con iOS/Android/Desktop) */
     const handleCopyMmsi = (mmsiNumber) => {
@@ -336,8 +408,10 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
     const [restoreSignal, setRestoreSignal] = useState(0);
     const [flyTarget, setFlyTarget] = useState(null); // Bersaglio da inquadrare con animazione
 
-    const lat = parseFloat(data?.gps?.lat) || 37.90;
-    const lon = parseFloat(data?.gps?.lon) || 23.40;
+    const hasValidGps = !!(data?.gps?.lat && data?.gps?.lon);
+    const lastSavedGps = useMemo(() => getLastKnownGps(), []);
+    const lat = parseFloat(data?.gps?.lat) || lastSavedGps[0];
+    const lon = parseFloat(data?.gps?.lon) || lastSavedGps[1];
     const ownCoords = useMemo(() => [lat, lon], [lat, lon]);
     const heading = data?.environment?.heading || data?.gps?.cog || 0;
     const ownSog = data?.anchor?.sog !== undefined ? data.anchor.sog : (data?.gps?.sog || 0);
@@ -345,9 +419,20 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
     // Smart Zoom tattico ricalcolato sulla velocità propria
     const smartZoom = useMemo(() => getAisSmartZoom(ownSog), [ownSog]);
 
+    // Oggetto Barca Propria per la scheda telemetria
+    const ownShipTarget = useMemo(() => ({
+        id: 'self',
+        name: 'ROTEVISTA',
+        isOwnShip: true,
+        lat: ownCoords[0],
+        lon: ownCoords[1],
+        sog: ownSog,
+        cog: heading
+    }), [ownCoords, ownSog, heading]);
+
     /** Centro degli anelli: Bersaglio AIS selezionato oppure la propria Barca */
     const rangeRingsCenter = useMemo(() => {
-        if (selectedTarget && selectedTarget.lat && selectedTarget.lon) {
+        if (selectedTarget && !selectedTarget.isOwnShip && selectedTarget.lat && selectedTarget.lon) {
             return { lat: selectedTarget.lat, lon: selectedTarget.lon };
         }
         return { lat: ownCoords[0], lon: ownCoords[1] };
@@ -384,7 +469,7 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
             } else {
                 curPositions.push([ptLat, ptLon]);
                 const color = curMode === "engine" ? "#f97316" : (isNightMode ? "#38bdf8" : "#0284c7");
-                segments.push({ positions: curPositions, color, weight: 3, opacity: 0.85 });
+                segments.push({ positions: curPositions, color, weight: 2.2, opacity: 0.85 });
                 curPositions = [[ptLat, ptLon]];
                 curMode = mode;
             }
@@ -392,7 +477,7 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
 
         if (curPositions.length >= 2) {
             const color = curMode === "engine" ? "#f97316" : (isNightMode ? "#38bdf8" : "#0284c7");
-            segments.push({ positions: curPositions, color, weight: 3, opacity: 0.85 });
+            segments.push({ positions: curPositions, color, weight: 2.2, opacity: 0.85 });
         }
 
         return segments;
@@ -468,13 +553,15 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
         if (!initialMmsi || hasHandledDeepLinkRef.current || sortedTargets.length === 0) return;
 
         const target = sortedTargets.find(t => {
-            const mmsi = t.id?.split(':').pop();
-            return mmsi === initialMmsi || t.id === initialMmsi;
+            const targetMmsi = String(t.id || '').split(':').pop();
+            return targetMmsi === String(initialMmsi).trim() || String(t.id).includes(String(initialMmsi).trim());
         });
 
         if (target) {
             hasHandledDeepLinkRef.current = true;
-            handleSelectFromList(target);
+            setAutoCenter(false);
+            setSelectedTarget(target);
+            setFlyTarget(target); // Forza il salto ottico sulla nave richiesta
 
             // Pulisce l'URL senza ricaricare la pagina per evitare ri-centramenti al refresh
             const cleanUrl = new URL(window.location.href);
@@ -484,7 +571,7 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
     }, [initialMmsi, sortedTargets]);
 
     return (
-        <div className="relative w-full h-[calc(100vh-4rem)] landscape:h-[calc(100vh-3.5rem)] overflow-hidden bg-[#0d1117] text-white">
+        <div className="relative w-full h-full overflow-hidden bg-[#0d1117] text-white">
             
             {/* MAPPA CARTOGRAFICA A TUTTO SCHERMO CON RENDERING CANVAS GPU */}
             <div className="absolute inset-0 z-0">
@@ -532,6 +619,7 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
 
                     <AisMapController
                         centerCoords={ownCoords}
+                        hasValidGps={hasValidGps}
                         autoCenter={autoCenter}
                         setAutoCenter={setAutoCenter}
                         smartZoom={smartZoom}
@@ -704,8 +792,33 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                         );
                     })}
 
-                    {/* PROPRIA BARCA */}
-                    <Marker position={ownCoords} icon={ownBoatAisIcon(heading)} zIndexOffset={1000} />
+                    {/* VETTORE DI ROTTA PROPRIO DISTINTIVO (Spessore 2.2px, tratteggio arioso 12, 8, 3, 8) */}
+                    {ownSog >= 0.5 && data?.anchor?.status === 'MOVING' && (() => {
+                        const ownColor = data?.anchor?.engine_on ? '#f97316' : (isNightMode ? '#38bdf8' : '#0284c7');
+                        const projCoords = getProjectedCoords(ownCoords[0], ownCoords[1], heading, ownSog, 15);
+                        return (
+                            <Polyline
+                                positions={[ownCoords, projCoords]}
+                                color={ownColor}
+                                weight={2.2}
+                                opacity={0.90}
+                                dashArray="12, 8, 3, 8"
+                                lineCap="round"
+                                lineJoin="round"
+                                interactive={false}
+                            />
+                        );
+                    })()}
+
+                    {/* PROPRIA BARCA (Clickabile per aprire scheda telemetria e viaggio) */}
+                    <Marker
+                        position={ownCoords}
+                        icon={ownBoatAisIcon(heading, data?.anchor?.engine_on ? '#f97316' : (isNightMode ? '#38bdf8' : '#0284c7'))}
+                        zIndexOffset={1000}
+                        eventHandlers={{
+                            click: () => handleSelectFromMap(ownShipTarget)
+                        }}
+                    />
                 </MapContainer>
             </div>
 
@@ -728,19 +841,96 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                 </div>
             )}
 
-            {/* 2. PANNELLO SUPERIORE COMPATTO (Altezza auto-adattante, zero spazio sprecato) */}
+            {/* 2. PANNELLO SUPERIORE COMPATTO (Bloccato rigidamente prima della navbar in landscape) */}
             {(isListOpen || selectedTarget) && (
                 <div
                     /* Blocca la propagazione di gesture touch e swipe al contenitore tab principale */
                     onPointerDownCapture={(e) => e.stopPropagation()}
                     onTouchStartCapture={(e) => e.stopPropagation()}
                     className={`absolute top-3 right-3 w-[320px] max-w-[88vw] z-[1001] bg-[#161b22]/95 backdrop-blur-2xl border border-white/15 rounded-3xl shadow-2xl flex flex-col overflow-hidden isolate ${
-                        selectedTarget ? 'h-auto max-h-[48vh]' : 'h-[40vh] max-h-[40vh]'
+                        selectedTarget
+                            ? 'h-auto max-h-[50vh] landscape:max-h-[calc(100vh-5.5rem)]'
+                            : 'h-[40vh] max-h-[40vh] landscape:h-[calc(100vh-5.5rem)] landscape:max-h-[calc(100vh-5.5rem)]'
                     }`}
                 >
                     
-                    {/* SCENARIO A: SCHEDA DETTAGLIO BERSAGLIO ARRICCHITA E COMPATTA */}
+                    {/* SCENARIO A: SCHEDA DETTAGLIO BERSAGLIO O SCHEDA BARCA PROPRIA */}
                     {selectedTarget ? (() => {
+                        // 1. SCHEDA TELEMETRIA E VIAGGIO BARCA PROPRIA (ROTEVISTA)
+                        if (selectedTarget.isOwnShip) {
+                            const engineNmVal = parseFloat(data?.trip?.engine_nm) || 0;
+                            const sailNmVal = parseFloat(data?.trip?.sail_nm) || 0;
+                            const totalNmVal = engineNmVal + sailNmVal;
+                            const enginePct = totalNmVal > 0 ? Math.round((engineNmVal / totalNmVal) * 100) : 0;
+                            const sailPct = totalNmVal > 0 ? Math.round((sailNmVal / totalNmVal) * 100) : 0;
+                            const depthVal = data?.anchor?.depth || data?.environment?.depth || 0;
+
+                            return (
+                                <div className="flex flex-col p-3 font-mono gap-2 overflow-y-auto">
+                                    {/* Header Barca Propria */}
+                                    <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                                        <button
+                                            onClick={handleBackToList}
+                                            className="flex items-center gap-1 text-[11px] font-black text-cyan-400 hover:text-cyan-300 active:scale-95 transition-transform shrink-0"
+                                        >
+                                            <span>←</span> LISTA
+                                        </button>
+                                        <div className="text-center truncate px-2">
+                                            <h4 className="text-sm font-black uppercase text-cyan-400 truncate tracking-tight">⛵ ROTEVISTA</h4>
+                                            <span className="text-[8.5px] text-gray-400 uppercase block tracking-tight mt-0.5">
+                                                {formatNautic(ownCoords[0], true)} {formatNautic(ownCoords[1], false)}
+                                            </span>
+                                        </div>
+                                        <button onClick={handleCloseAll} className="text-gray-400 hover:text-white p-1 shrink-0">
+                                            <X size={16} />
+                                        </button>
+                                    </div>
+
+                                    {/* Griglia Telemetria Live Barca */}
+                                    <div className="grid grid-cols-4 gap-1 text-[10px] shrink-0 text-center">
+                                        <div className="bg-white/5 p-1.5 rounded-xl">
+                                            <span className="text-[7.5px] text-gray-400 uppercase block">SOG</span>
+                                            <span className="font-bold text-cyan-400 text-xs">{ownSog.toFixed(1)}k</span>
+                                        </div>
+                                        <div className="bg-white/5 p-1.5 rounded-xl">
+                                            <span className="text-[7.5px] text-gray-400 uppercase block">Prua</span>
+                                            <span className="font-bold text-white text-xs">{Math.round(heading)}°</span>
+                                        </div>
+                                        <div className="bg-white/5 p-1.5 rounded-xl">
+                                            <span className="text-[7.5px] text-gray-400 uppercase block">Fondo</span>
+                                            <span className="font-bold text-white text-xs">{depthVal > 0 ? `${depthVal.toFixed(1)}m` : '--'}</span>
+                                        </div>
+                                        <div className="bg-white/5 p-1.5 rounded-xl">
+                                            <span className="text-[7.5px] text-gray-400 uppercase block">Volvo</span>
+                                            <span className={`font-bold text-xs ${data?.anchor?.engine_on ? 'text-yellow-400 animate-pulse' : 'text-gray-400'}`}>
+                                                {data?.anchor?.engine_on ? 'ON' : 'OFF'}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Tabella Tratta e Rendimento (data.trip) */}
+                                    <div className="bg-white/5 p-2 rounded-xl border border-white/5 flex flex-col gap-1 text-[10px]">
+                                        <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest border-b border-white/5 pb-1">
+                                            Statistiche Tratta
+                                        </span>
+                                        <div className="flex justify-between items-center text-cyan-400 font-bold">
+                                            <span>⛵ Vela: {data?.trip?.sail_time || '0m'}</span>
+                                            <span>{data?.trip?.sail_nm || '0.00 NM'} <span className="text-gray-500 font-normal">({sailPct}%)</span></span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-yellow-400 font-bold">
+                                            <span>🚤 Motore: {data?.trip?.engine_time || '0m'}</span>
+                                            <span>{data?.trip?.engine_nm || '0.00 NM'} <span className="text-gray-500 font-normal">({enginePct}%)</span></span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-white font-black border-t border-white/5 pt-1 mt-0.5">
+                                            <span>⏱️ Totale: {data?.trip?.total_nav_time || '0m'}</span>
+                                            <span>{data?.trip?.total_nm || '0.00 NM'}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        }
+
+                        // 2. SCHEDA DETTAGLIO BERSAGLIO AIS NORMALE
                         const ship = getShipTypeInfo(selectedTarget.type);
                         const ageTxt = selectedTarget.age !== undefined
                             ? (selectedTarget.age < 60 ? `${selectedTarget.age}s fa` : `${Math.round(selectedTarget.age / 60)}m fa`)
@@ -748,59 +938,66 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
 
                         return (
                             <div className="flex flex-col p-3 font-mono gap-2 overflow-y-auto">
-                                {/* Header: Tasto Indietro, Nome, Tipo Nave, MMSI, Freschezza e Tasto Chiudi */}
-                                <div className="flex items-center justify-between border-b border-white/10 pb-2 shrink-0">
-                                    <button
-                                        onClick={handleBackToList}
-                                        className="flex items-center gap-1 text-[11px] font-black text-cyan-400 hover:text-cyan-300 active:scale-95 transition-transform shrink-0"
-                                    >
-                                        <span>←</span> LISTA
-                                    </button>
-                                    <div className="text-center truncate px-1 flex-1">
-                                    <div className="flex items-center justify-center gap-1">
-                                        <span className="text-base">{ship.emoji}</span>
-                                        <h4 className="text-sm font-black uppercase text-white truncate">{selectedTarget.name || 'Sconosciuto'}</h4>
+                                {/* Header: Riorganizzato su 2 righe a tutta larghezza con padding conforme alle curve */}
+                                <div className="flex flex-col border-b border-white/10 pb-2 px-1 pt-0.5 shrink-0 gap-1">
+                                    {/* Riga 1: Tasto Indietro, Nome Nave e Tasto Chiudi */}
+                                    <div className="flex items-center justify-between">
+                                        <button
+                                            onClick={handleBackToList}
+                                            className="flex items-center gap-1 text-[11px] font-black text-cyan-400 hover:text-cyan-300 active:scale-95 transition-transform shrink-0 px-1 py-0.5"
+                                        >
+                                            <span>←</span> LISTA
+                                        </button>
+                                        <div className="flex items-center justify-center gap-1.5 truncate px-2">
+                                            <span className="text-base shrink-0">{ship.emoji}</span>
+                                            <h4 className="text-sm font-black uppercase text-white truncate tracking-tight">
+                                                {selectedTarget.name || 'Sconosciuto'}
+                                            </h4>
+                                        </div>
+                                        <button
+                                            onClick={handleCloseAll}
+                                            className="text-gray-400 hover:text-white p-1 shrink-0 rounded-lg active:scale-95 transition-transform"
+                                        >
+                                            <X size={16} />
+                                        </button>
                                     </div>
-                                    {/* Tasto Copia Rapida MMSI negli Appunti */}
-                                    <div className="flex items-center justify-center gap-1 mt-0.5">
-                                        <span className="text-[9.5px] font-bold text-gray-300 uppercase tracking-tight">
-                                            {ship.label} •
-                                        </span>
+
+                                    {/* Riga 2: Tipo Nave, MMSI cliccabile e Freschezza a tutta larghezza (zero tagli) */}
+                                    <div className="flex items-center justify-center gap-1.5 text-[9.5px] font-bold text-gray-300 uppercase tracking-tight">
+                                        <span>{ship.label}</span>
+                                        <span className="text-gray-600">•</span>
                                         {selectedTarget.id?.includes('mmsi:') ? (
                                             <button
                                                 onClick={() => handleCopyMmsi(selectedTarget.id.split(':').pop())}
-                                                className={`text-[9.5px] font-bold uppercase flex items-center gap-1 cursor-pointer active:scale-95 transition-all px-1 py-0.5 rounded-md ${
-                                                    isMmsiCopied ? 'text-green-400 bg-green-500/10' : 'text-cyan-400 hover:text-cyan-300 bg-white/5'
+                                                className={`flex items-center gap-1 cursor-pointer active:scale-95 transition-all px-1.5 py-0.5 rounded-md border ${
+                                                    isMmsiCopied
+                                                        ? 'text-green-400 bg-green-500/15 border-green-500/30'
+                                                        : 'text-cyan-400 hover:text-cyan-300 bg-white/5 border-white/10'
                                                 }`}
                                                 title="Tocca per copiare l'MMSI negli appunti"
                                             >
                                                 {isMmsiCopied ? (
                                                     <>
                                                         <Check size={11} className="shrink-0 text-green-400" />
-                                                        <span>Copiato!</span>
+                                                        <span className="text-[9px]">Copiato!</span>
                                                     </>
                                                 ) : (
                                                     <>
-                                                        <Copy size={10} className="shrink-0 opacity-80" />
+                                                        <Copy size={9} className="shrink-0 opacity-80" />
                                                         <span>MMSI {selectedTarget.id.split(':').pop()}</span>
                                                     </>
                                                 )}
                                             </button>
                                         ) : (
-                                            <span className="text-[9.5px] font-bold text-gray-300 uppercase">
-                                                MMSI: --
-                                            </span>
+                                            <span className="text-gray-400">MMSI: --</span>
                                         )}
                                         {ageTxt && (
-                                            <span className="text-[9.5px] font-bold text-gray-400">
-                                                • {ageTxt}
-                                            </span>
+                                            <>
+                                                <span className="text-gray-600">•</span>
+                                                <span className="text-gray-400">{ageTxt}</span>
+                                            </>
                                         )}
                                     </div>
-                                </div>
-                                    <button onClick={handleCloseAll} className="text-gray-400 hover:text-white p-1 shrink-0">
-                                        <X size={16} />
-                                    </button>
                                 </div>
 
                                 {/* Griglia Metriche Principali con Distanze Duali Intelligenti */}
@@ -837,10 +1034,10 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                                     </div>
                                 )}
 
-                                {/* Box Analisi Incrocio & Regole COLREGs */}
+                                {/* Box Analisi Incrocio & Regole COLREGs con ritorno a capo automatico */}
                                 {selectedTarget.crossDir && (
-                                    <div className="bg-white/5 p-2 rounded-xl text-[9px] text-gray-300 border border-white/5 overflow-y-auto leading-tight max-h-16">
-                                        <span className="text-orange-400 font-bold uppercase block mb-0.5">Analisi Incrocio:</span>
+                                    <div className="bg-white/5 p-2 rounded-xl text-[9px] text-gray-300 border border-white/5 overflow-y-auto leading-normal whitespace-pre-line max-h-20">
+                                        <span className="text-orange-400 font-bold uppercase block mb-1">Analisi Incrocio:</span>
                                         {selectedTarget.crossDir}
                                     </div>
                                 )}
@@ -862,8 +1059,32 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                                 </button>
                             </div>
 
-                            {/* Righe Bersagli */}
+                            {/* Righe Bersagli con Riga Fissa Barca Propria in Cima */}
                             <div className="flex-1 overflow-y-auto p-1.5 space-y-1.5">
+                                {/* Riga Fissata: Barca Propria (ROTEVISTA) */}
+                                <div
+                                    onClick={() => handleSelectFromList(ownShipTarget)}
+                                    className="p-2 rounded-xl border border-cyan-500/30 bg-cyan-500/10 hover:bg-cyan-500/20 transition-all cursor-pointer flex items-center justify-between"
+                                >
+                                    <div className="flex flex-col truncate pr-2">
+                                        <span className="text-[11px] font-black uppercase text-cyan-400 truncate flex items-center gap-1">
+                                            ⛵ ROTEVISTA (LA TUA BARCA)
+                                        </span>
+                                        <span className="text-[8px] text-gray-300 mt-0.5">
+                                            {data?.anchor?.status !== 'MOVING' ? 'ALL\'ANCORA' : (data?.anchor?.engine_on ? 'A MOTORE' : 'A VELA')} • HDG: {Math.round(heading)}°
+                                        </span>
+                                    </div>
+                                    <div className="flex flex-col items-end text-right shrink-0 leading-none">
+                                        <span className="text-xs font-black text-cyan-400 font-mono">
+                                            {ownSog.toFixed(1)} kn
+                                        </span>
+                                        <span className="text-[7.5px] text-gray-400 mt-1">
+                                            SOG
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* Lista Bersagli AIS Circostanti */}
                                 {sortedTargets.map((v) => {
                                     const isRed = v.risk === 'RED';
                                     const isOrange = v.risk === 'ORANGE';

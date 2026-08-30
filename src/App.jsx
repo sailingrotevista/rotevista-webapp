@@ -11,10 +11,25 @@ import AdvancedView from './views/AdvancedView';
 import logo from './assets/AppIcon.png';
 
 function App() {
-  const [selectedTab, setSelectedTab] = useState(0);
+  // Ripristina l'ultimo tab salvato o dà priorità al Deep Link Telegram
+  const [selectedTab, setSelectedTab] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('mmsi')) return 3; // Priorità Deep Link AIS
+    const saved = localStorage.getItem('rotevista_active_tab');
+    return saved !== null ? parseInt(saved, 10) : 0;
+  });
+
   const [direction, setDirection] = useState(0);
-  const [isNightMode, setIsNightMode] = useState(false);
-  const [deepLinkMmsi, setDeepLinkMmsi] = useState(null);
+  // Ripristina la modalità Notte salvata per non abbagliare al refresh
+  const [isNightMode, setIsNightMode] = useState(() => {
+    return localStorage.getItem('rotevista_night_mode') === 'true';
+  });
+
+  // Lettura sincrona immediata del parametro ?mmsi=... prima del primo render
+  const [deepLinkMmsi, setDeepLinkMmsi] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('mmsi') || null;
+  });
   const manager = useBoatData();
 
   // Rileva se l'app è stata aperta da un link Telegram con parametro ?mmsi=...
@@ -23,7 +38,8 @@ function App() {
     const mmsi = params.get('mmsi');
     if (mmsi) {
       setDeepLinkMmsi(mmsi);
-      setSelectedTab(3); // Forza l'apertura immediata del tab AIS
+      setSelectedTab(3);
+      localStorage.setItem('rotevista_active_tab', '3');
     }
   }, []);
 
@@ -35,10 +51,12 @@ function App() {
     }
   };
 
+  // Cambio scheda con salvataggio persistente in memoria locale
   const changeTab = (newTab) => {
     if (newTab === selectedTab) return;
     setDirection(newTab > selectedTab ? 1 : -1);
     setSelectedTab(newTab);
+    localStorage.setItem('rotevista_active_tab', String(newTab));
   };
 
   const onDragEnd = (event, info) => {
@@ -55,7 +73,8 @@ function App() {
   };
 
   return (
-    <div className={`min-h-screen bg-[#121212] flex flex-col font-sans overflow-hidden select-none transition-colors duration-700 ${isNightMode ? 'night-mode-active' : ''}`}>
+    /* h-[100dvh] adatta l'app dinamicamente sia con la barra di Safari che in Full Screen PWA */
+    <div className={`h-screen h-[100dvh] bg-[#121212] flex flex-col font-sans overflow-hidden select-none transition-colors duration-700 ${isNightMode ? 'night-mode-active' : ''}`}>
       
       {/* HEADER FISSO: Altezza ridotta in landscape per recuperare spazio */}
       <header
@@ -77,8 +96,13 @@ function App() {
           )}
 
           <button
-            onClick={(e) => { e.stopPropagation(); setIsNightMode(!isNightMode); }}
-            className={`p-2 rounded-xl border transition-all active:scale-90 ${isNightMode ? 'bg-red-500/20 border-red-500/50 text-red-500' : 'bg-white/5 border-white/10 text-gray-400'}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              const nextMode = !isNightMode;
+              setIsNightMode(nextMode);
+              localStorage.setItem('rotevista_night_mode', String(nextMode));
+            }}
+            className={`p-2 rounded-xl border transition-all active:scale-95 ${isNightMode ? 'bg-red-500/20 border-red-500/50 text-red-500' : 'bg-white/5 border-white/10 text-gray-400'}`}
           >
             {isNightMode ? <Sun size={16} /> : <Moon size={16} />}
           </button>
@@ -90,8 +114,8 @@ function App() {
         </div>
       </header>
 
-      {/* MAIN: Margine allineato all'altezza dell'header (h-16 = mt-16) per evitare sovrapposizioni */}
-      <main className="flex-1 relative mt-16 landscape:mt-14 pb-32 h-full w-full">
+      {/* MAIN: Altezza dinamica fluida */}
+      <main className="flex-1 relative mt-16 landscape:mt-14 h-[calc(100%-4rem)] landscape:h-[calc(100%-3.5rem)] w-full">
         <AnimatePresence initial={false} custom={direction}>
           <motion.div
             key={selectedTab}
