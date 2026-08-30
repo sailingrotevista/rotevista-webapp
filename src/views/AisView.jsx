@@ -235,8 +235,8 @@ const AisMapController = ({
     useEffect(() => {
         if (!autoCenter || centerCoords[0] === 0 || isTargetSelected) return;
 
-        // 1. Primo caricamento: salta istantaneamente alle coordinate GPS reali
-        if (isFirstLoadRef.current && hasValidGps) {
+        // 1. Primo caricamento: salta alle coordinate GPS solo se non c'è un bersaglio selezionato
+        if (isFirstLoadRef.current && hasValidGps && !flyTarget) {
             map.setView(centerCoords, smartZoom, { animate: false });
             lastCenteredPosRef.current = centerCoords;
             isFirstLoadRef.current = false;
@@ -272,20 +272,12 @@ const AisMapController = ({
         }
     }, [autoCenter, centerCoords, hasValidGps, smartZoom, isTargetSelected, map, updateViewport]);
 
-    // Spostamento animato con offset ottico per centrare la nave nello spazio libero tra scheda e navbar
+    // Spostamento animato diretto, nativo e matematicamente infallibile sul bersaglio
     useEffect(() => {
         if (flyTarget && flyTarget.lat && flyTarget.lon) {
             const targetZ = Math.max(map.getZoom(), 15);
-            
-            // Calcolo offset in pixel: sposta la telecamera per far atterrare la nave nell'area libera
-            const isPortrait = window.innerHeight > window.innerWidth;
-            const offsetY = isPortrait ? 50 : 20; // 50px su smartphone verticale, 20px in orizzontale
-            
-            const targetPoint = map.project([flyTarget.lat, flyTarget.lon], targetZ);
-            const offsetPoint = L.point(targetPoint.x, targetPoint.y - offsetY);
-            const offsetLatLng = map.unproject(offsetPoint, targetZ);
-
-            map.flyTo(offsetLatLng, targetZ, { duration: 0.8 });
+            // Centratura nativa Leaflet priva di errori di proiezione all'avvio
+            map.flyTo([parseFloat(flyTarget.lat), parseFloat(flyTarget.lon)], targetZ, { duration: 0.8 });
         }
     }, [flyTarget, map]);
 
@@ -552,16 +544,17 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
     useEffect(() => {
         if (!initialMmsi || hasHandledDeepLinkRef.current || sortedTargets.length === 0) return;
 
+        const cleanMmsi = String(initialMmsi).trim();
         const target = sortedTargets.find(t => {
             const targetMmsi = String(t.id || '').split(':').pop();
-            return targetMmsi === String(initialMmsi).trim() || String(t.id).includes(String(initialMmsi).trim());
+            return targetMmsi === cleanMmsi || String(t.id).includes(cleanMmsi);
         });
 
-        if (target) {
+        if (target && target.lat && target.lon) {
             hasHandledDeepLinkRef.current = true;
             setAutoCenter(false);
             setSelectedTarget(target);
-            setFlyTarget(target); // Forza il salto ottico sulla nave richiesta
+            setFlyTarget(target); // Salto nativo sicuro sul bersaglio
 
             // Pulisce l'URL senza ricaricare la pagina per evitare ri-centramenti al refresh
             const cleanUrl = new URL(window.location.href);
