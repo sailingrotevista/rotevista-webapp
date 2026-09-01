@@ -144,43 +144,62 @@ const getWestLabelCoords = (center, radius) => {
     return [center.lat, center.lon + dLon];
 };
 
-/** Etichetta tattica fluttuante sulla mappa (solo per bersagli in ALLARME ROSSO o WARNING ARANCIONE) */
+/** Micro-Targhetta tattica fluttuante (Dark Glass ad altissima nitidezza per ALLARMI e WARNING) */
 const threatVesselLabelIcon = (vessel) => {
     const isRed = vessel.risk === 'RED';
     const color = isRed ? '#ef4444' : '#f97316';
     const ship = getShipTypeInfo(vessel.type);
 
     const isMoving = vessel.isMoving !== undefined ? vessel.isMoving : (!vessel.isAnchored && vessel.sog >= 0.3);
-    const speedLine = isMoving ? `${vessel.sog} kn • ${vessel.cog}°` : `ALL'ANCORA (${vessel.dist}m)`;
+    // Riga 2 pulita senza duplicazioni di distanza
+    const speedLine = isMoving ? `${vessel.sog} kn • ${vessel.cog}°` : 'ALL\'ANCORA';
 
     let alertLine = '';
     if (isRed) {
         const title = vessel.riskMsg || 'COLLISIONE!';
         const timeTxt = (vessel.tcpa !== null && vessel.tcpa !== undefined && vessel.tcpa >= 0) ? ` in ${Math.round(vessel.tcpa)}m` : '';
-        const cpaTxt = vessel.cpa !== null && vessel.cpa !== undefined ? ` • CPA: ${vessel.cpa}m` : '';
+        const cpaTxt = vessel.cpa !== null && vessel.cpa !== undefined ? ` • CPA: ${formatNavDistanceShort(vessel.cpa)}` : '';
         alertLine = `🚨 ${title}${cpaTxt}${timeTxt}`;
     } else {
         const timeTxt = (vessel.tcpa !== null && vessel.tcpa !== undefined && vessel.tcpa >= 0) ? ` in ${Math.round(vessel.tcpa)}m` : '';
-        const cpaTxt = vessel.cpa !== null && vessel.cpa !== undefined ? `CPA: ${vessel.cpa}m` : `Dist: ${vessel.dist}m`;
+        const cpaTxt = vessel.cpa !== null && vessel.cpa !== undefined ? `CPA: ${formatNavDistanceShort(vessel.cpa)}` : `Dist: ${formatNavDistanceShort(vessel.dist)}`;
         alertLine = `⚠️ ${cpaTxt}${timeTxt}`;
     }
 
-    const textShadow = '-1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000, 0 0 5px #000';
-
     return new L.DivIcon({
         html: `
-            <div style="display: flex; flex-direction: row; align-items: flex-start; gap: 4px; white-space: nowrap; font-family: monospace; line-height: 1.15; pointer-events: none;">
-                <span style="font-size: 16px; line-height: 1; filter: drop-shadow(0 0 3px black);">${ship.emoji}</span>
-                <div style="display: flex; flex-direction: column; align-items: flex-start;">
-                    <span style="font-size: 12px; font-weight: 900; color: ${color}; text-shadow: ${textShadow}; text-transform: uppercase;">${vessel.name || 'Sconosciuto'}</span>
-                    <span style="font-size: 9px; font-weight: 800; color: #ffffff; text-shadow: ${textShadow}; margin-top: 1px;">${speedLine}</span>
-                    <span style="font-size: 10px; font-weight: 900; color: ${color}; text-shadow: ${textShadow}; margin-top: 1.5px;">${alertLine}</span>
+            <div style="
+                display: inline-flex;
+                flex-direction: row;
+                align-items: center;
+                gap: 6px;
+                background: rgba(15, 23, 42, 0.90);
+                backdrop-filter: blur(6px);
+                border: 1px solid ${isRed ? 'rgba(239, 68, 68, 0.45)' : 'rgba(249, 115, 22, 0.45)'};
+                border-radius: 10px;
+                padding: 4px 8px;
+                box-shadow: 0 4px 14px rgba(0,0,0,0.55);
+                white-space: nowrap;
+                font-family: monospace;
+                pointer-events: none;
+            ">
+                <span style="font-size: 18px; line-height: 1;">${ship.emoji}</span>
+                <div style="display: flex; flex-direction: column; align-items: flex-start; line-height: 1.2;">
+                    <span style="font-size: 13.5px; font-weight: 900; color: ${color}; text-transform: uppercase; letter-spacing: -0.2px;">
+                        ${vessel.name || 'Sconosciuto'}
+                    </span>
+                    <span style="font-size: 10px; font-weight: 700; color: #cbd5e1; margin-top: 1px;">
+                        ${speedLine}
+                    </span>
+                    <span style="font-size: 11px; font-weight: 900; color: ${color}; margin-top: 1px;">
+                        ${alertLine}
+                    </span>
                 </div>
             </div>
         `,
         className: 'ais-threat-floating-label',
-        iconSize: [280, 48],
-        iconAnchor: [-12, 24] // Spostata leggermente a lato per non coprire il marker
+        iconSize: [320, 56],
+        iconAnchor: [-14, 28] // Posizionata lateralmente al marker
     });
 };
 
@@ -202,6 +221,7 @@ const AisMapController = ({
 }) => {
     const map = useMap();
     const isManualZoomOverrideRef = useRef(false);
+    const isProgrammaticMoveRef = useRef(false); // Flag anti-conflitto per distinguere i gesti dita dai voli automatici
     const isFirstLoadRef = useRef(true);
 
     // Aggiorna confini visibili e livello di zoom per ottimizzazione GPU
@@ -212,13 +232,15 @@ const AisMapController = ({
 
     useMapEvents({
         dragstart: () => {
+            // Si disattiva SOLO quando l'utente trascina fisicamente la mappa col dito
             map.stop();
             setAutoCenter(false);
         },
-        zoomstart: () => {
-            // Qualsiasi zoom o pinch a due dita dell'utente disattiva l'inseguimento e segna l'override
-            isManualZoomOverrideRef.current = true;
-            setAutoCenter(false);
+        zoomstart: (e) => {
+            // Riconosce il pinch-to-zoom SOLO se originato da un gesto touch/mouse reale
+            if (e && e.originalEvent) {
+                isManualZoomOverrideRef.current = true;
+            }
         },
         zoomend: updateViewport,
         moveend: updateViewport
@@ -317,11 +339,12 @@ const AisMapController = ({
             <button
                 onClick={() => {
                     if (!autoCenter) {
-                        // 1° Click: Riporta la visuale sulla barca MANTENENDO lo zoom attuale dell'utente
+                        // 1° Click: Centra la barca e attiva l'inseguimento mantenendo lo zoom corrente
+                        isManualZoomOverrideRef.current = true;
                         setAutoCenter(true);
                         map.flyTo(centerCoords, map.getZoom(), { duration: 0.5 });
                     } else {
-                        // 2° Click (già centrato): Attiva lo Smart Zoom dinamico basato sulla velocità
+                        // 2° Click (già centrato): Sblocca e applica lo Smart Zoom dinamico da velocità
                         isManualZoomOverrideRef.current = false;
                         map.flyTo(centerCoords, smartZoom, { duration: 0.6 });
                     }
@@ -681,7 +704,7 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                         );
                     })}
 
-                    {/* BERSAGLI AIS CON OTTIMIZZAZIONE LOD E VIEWPORT CULLING */}
+                    {/* BERSAGLI AIS CON OTTIMIZZAZIONE LOD, VIEWPORT CULLING E Z-INDEX DI PROFONDITÀ */}
                     {visibleMapTargets.map((v) => {
                         const isMoving = v.isMoving !== undefined ? v.isMoving : (!v.isAnchored && v.sog >= 0.3);
                         const isSelected = selectedTarget?.id === v.id;
@@ -695,9 +718,14 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                         const shouldRenderTrail = v.trail && v.trail.length >= 2 && (isRedAlert || isOrangeWarn || isSelected || v.dist <= 3704);
                         const shouldRenderVector = isMoving && (isRedAlert || isOrangeWarn || isSelected || v.dist <= 5556);
 
+                        // Calcolo Z-Index: pericoli in cima + barca più vicina sempre sopra quelle lontane
+                        const distDepthBonus = Math.max(0, 3000 - Math.round(v.dist || 0));
+                        const basePriority = isRedAlert ? 10000 : isSelected ? 8000 : isOrangeWarn ? 5000 : 1000;
+                        const finalZIndex = basePriority + distDepthBonus;
+
                         return (
                             <React.Fragment key={v.id}>
-                                {/* Scia Storica (solo se tatticamente rilevante) */}
+                                {/* Scia Storica */}
                                 {shouldRenderTrail && (
                                     <Polyline
                                         positions={v.trail.map(pt => [pt.lat, pt.lon])}
@@ -709,7 +737,7 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                                     />
                                 )}
 
-                                {/* Vettore di prua a 15 min (solo per target tattici o in allarme) */}
+                                {/* Vettore di prua a 15 min */}
                                 {shouldRenderVector && (
                                     <Polyline
                                         positions={[[v.lat, v.lon], getProjectedCoords(v.lat, v.lon, v.cog, v.sog, 15)]}
@@ -721,7 +749,7 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                                     />
                                 )}
 
-                                {/* 🔴 CERCHIO DI ALLARME ROSSO PERICOLO (Pulsante e spesso) */}
+                                {/* 🔴 Cerchio Allarme Rosso */}
                                 {isRedAlert && (
                                     <Circle
                                         center={[v.lat, v.lon]}
@@ -737,7 +765,7 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                                     />
                                 )}
 
-                                {/* 🟠 CERCHIO DI WARNING ARANCIONE */}
+                                {/* 🟠 Cerchio Warning Arancione */}
                                 {!isRedAlert && isOrangeWarn && (
                                     <Circle
                                         center={[v.lat, v.lon]}
@@ -753,7 +781,7 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                                     />
                                 )}
 
-                                {/* 🩵 CERCHIO DI FOCUS/SELEZIONE CIANO */}
+                                {/* 🩵 Cerchio Focus/Selezione */}
                                 {isSelected && (
                                     <Circle
                                         center={[v.lat, v.lon]}
@@ -769,22 +797,22 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                                     />
                                 )}
 
-                                {/* Marker Bersaglio con scala dinamica da zoom e priorità Z-Index */}
+                                {/* Marker Bersaglio */}
                                 <Marker
                                     position={[v.lat, v.lon]}
                                     icon={targetMarkerIcon(v, isSelected, currentZoom)}
-                                    zIndexOffset={isRedAlert ? 700 : isOrangeWarn ? 500 : isSelected ? 600 : 100}
+                                    zIndexOffset={finalZIndex}
                                     eventHandlers={{
                                         click: () => handleSelectFromMap(v)
                                     }}
                                 />
 
-                                {/* Etichetta Tattica Fluttuante (visibile solo se in Allarme Rosso o Warning Arancione) */}
-                                {(isRedAlert || isOrangeWarn) && (
+                                {/* Etichetta Tattica Fluttuante (Solo Allarmi Rossi, Warning Arancioni o Bersaglio Selezionato) */}
+                                {(isRedAlert || isOrangeWarn || isSelected) && (
                                     <Marker
                                         position={[v.lat, v.lon]}
                                         icon={threatVesselLabelIcon(v)}
-                                        zIndexOffset={isRedAlert ? 800 : 650}
+                                        zIndexOffset={finalZIndex + 100}
                                         interactive={false}
                                     />
                                 )}

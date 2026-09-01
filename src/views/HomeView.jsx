@@ -203,11 +203,13 @@ const movingVesselLabelIcon = (name, sog, cpa, tcpa, crossDir, risk, riskMsg, ag
 
     if (risk === "RED") {
         let alertTitle = riskMsg || "COLLISIONE!";
-        let dirTxt = crossDir ? ` (${crossDir})` : "";
-        let timeTxt = (tcpa !== null && tcpa >= 0) ? ` IN ${Math.round(tcpa)} MIN` : "";
-        cpaLine = `🚨 ${alertTitle} - CPA: ${cpa}m${dirTxt}${timeTxt}`;
+        let timeTxt = (tcpa !== null && tcpa >= 0) ? ` in ${Math.round(tcpa)}m` : "";
+        cpaLine = crossDir ? `🚨 ${crossDir}` : `🚨 ${alertTitle} - CPA: ${cpa}m${timeTxt}`;
+    } else if (crossDir) {
+        // Usa la sintassi telegrafica pulita senza duplicare CPA e minuti
+        cpaLine = `⚠️ ${crossDir}`;
     } else if (tcpa !== null && tcpa >= 0) {
-        cpaLine = `CPA: ${cpa}m (${crossDir}) IN ${Math.round(tcpa)} MIN`;
+        cpaLine = `CPA: ${cpa}m in ${Math.round(tcpa)}m`;
     }
 
     const emoji = getShipTypeEmoji(type);
