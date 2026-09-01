@@ -382,6 +382,7 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
     const [currentZoom, setCurrentZoom] = useState(14);
     const [mapBounds, setMapBounds] = useState(null); // Confini visibili dello schermo
     const [isMmsiCopied, setIsMmsiCopied] = useState(false); // Feedback copia MMSI
+    const [isGpsCopied, setIsGpsCopied] = useState(false); // Feedback copia Coordinate GPS proprie
 
     // Salva l'ultimo punto GPS valido in memoria locale a ogni ricezione dati
     useEffect(() => {
@@ -393,28 +394,55 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
         }
     }, [data?.gps?.lat, data?.gps?.lon]);
 
-    /** Copia sicura dell'MMSI negli appunti (compatibile con iOS/Android/Desktop) */
-    const handleCopyMmsi = (mmsiNumber) => {
-        if (!mmsiNumber) return;
-
+    /** Funzione universale di copia sicura anti-scroll per iOS Safari */
+    const copyToClipboardSafe = (text, onSuccess) => {
+        if (!text) return;
         if (navigator.clipboard && window.isSecureContext) {
-            navigator.clipboard.writeText(mmsiNumber).then(() => {
-                setIsMmsiCopied(true);
-                setTimeout(() => setIsMmsiCopied(false), 2000);
-            });
-        } else {
-            const textArea = document.createElement("textarea");
-            textArea.value = mmsiNumber;
-            textArea.style.position = "fixed";
-            textArea.style.opacity = "0";
-            document.body.appendChild(textArea);
-            textArea.focus();
-            textArea.select();
+            navigator.clipboard.writeText(text).then(() => {
+                if (onSuccess) onSuccess();
+            }).catch(() => {});
+            return;
+        }
+
+        // Fallback blindato per HTTP su iOS: readonly + coordinate fuori schermo = ZERO SCROLL
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.setAttribute("readonly", "");
+        textArea.style.position = "absolute";
+        textArea.style.left = "-9999px";
+        textArea.style.top = `${window.pageYOffset || document.documentElement.scrollTop || 0}px`;
+        textArea.style.fontSize = "12pt";
+        textArea.style.opacity = "0";
+
+        document.body.appendChild(textArea);
+        textArea.select();
+        textArea.setSelectionRange(0, 99999);
+
+        try {
             document.execCommand('copy');
+            if (onSuccess) onSuccess();
+        } catch (e) {
+            console.error("Copia fallita", e);
+        }
+
+        document.body.removeChild(textArea);
+    };
+
+    /** Copia coordinate GPS proprie */
+    const handleCopyGps = (latVal, lonVal) => {
+        const textToCopy = `${formatNautic(latVal, true)} ${formatNautic(lonVal, false)}`;
+        copyToClipboardSafe(textToCopy, () => {
+            setIsGpsCopied(true);
+            setTimeout(() => setIsGpsCopied(false), 2000);
+        });
+    };
+
+    /** Copia MMSI nave */
+    const handleCopyMmsi = (mmsiNumber) => {
+        copyToClipboardSafe(mmsiNumber, () => {
             setIsMmsiCopied(true);
             setTimeout(() => setIsMmsiCopied(false), 2000);
-            document.body.removeChild(textArea);
-        }
+        });
     };
 
     // Memoria sincrona dello stato della mappa precedente all'ispezione
@@ -554,6 +582,7 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
     /** Ritorno alla lista con ripristino telecamera */
     const handleBackToList = () => {
         setSelectedTarget(null);
+        setIsListOpen(true); // Forza la visualizzazione della lista bersagli
         setFlyTarget(null);
         if (cameraSnapshotRef.current) {
             setRestoreSignal(prev => prev + 1);
@@ -905,8 +934,17 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                                         </button>
                                         <div className="text-center truncate px-2">
                                             <h4 className="text-sm font-black uppercase text-cyan-400 truncate tracking-tight">⛵ ROTEVISTA</h4>
-                                            <span className="text-[8.5px] text-gray-400 uppercase block tracking-tight mt-0.5">
-                                                {formatNautic(ownCoords[0], true)} {formatNautic(ownCoords[1], false)}
+                                            <span
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleCopyGps(ownCoords[0], ownCoords[1]);
+                                                }}
+                                                className={`text-[8.5px] uppercase block tracking-tight mt-0.5 cursor-pointer font-mono font-bold transition-colors ${
+                                                    isGpsCopied ? 'text-green-400 animate-pulse' : 'text-gray-400 hover:text-white'
+                                                }`}
+                                                title="Tocca per copiare le coordinate GPS"
+                                            >
+                                                {isGpsCopied ? '✓ Coordinate Copiate!' : `${formatNautic(ownCoords[0], true)} ${formatNautic(ownCoords[1], false)}`}
                                             </span>
                                         </div>
                                         <button onClick={handleCloseAll} className="text-gray-400 hover:text-white p-1 shrink-0">
@@ -936,22 +974,54 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                                         </div>
                                     </div>
 
-                                    {/* Tabella Tratta e Rendimento (data.trip) */}
+                                    {/* Tabella Tratta e Rendimento (data.trip) - Allineata su 4 colonne */}
                                     <div className="bg-white/5 p-2 rounded-xl border border-white/5 flex flex-col gap-1 text-[10px]">
                                         <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest border-b border-white/5 pb-1">
                                             Statistiche Tratta
                                         </span>
-                                        <div className="flex justify-between items-center text-cyan-400 font-bold">
-                                            <span>⛵ Vela: {data?.trip?.sail_time || '0m'}</span>
-                                            <span>{data?.trip?.sail_nm || '0.00 NM'} <span className="text-gray-500 font-normal">({sailPct}%)</span></span>
+                                        
+                                        {/* Riga Vela */}
+                                        <div className="grid grid-cols-[52px_44px_1fr_auto] items-center text-[9.5px] leading-none gap-1 py-0.5">
+                                            <span className="text-cyan-400 font-bold">⛵ Vela</span>
+                                            <span className="text-white font-medium">{data?.trip?.sail_time || '0m'}</span>
+                                            <span className="text-cyan-400 font-bold truncate">
+                                                {data?.trip?.sail_nm || '0.00 NM'} <span className="text-gray-300 font-bold text-[8.5px]">({sailPct}%)</span>
+                                            </span>
+                                            <span className="text-right font-mono text-[9px] whitespace-nowrap">
+                                                {data?.trip?.sail_max_kn && data.trip.sail_max_kn !== "--" ? (
+                                                    <span className="text-gray-400">
+                                                        <strong className="text-cyan-300 font-bold">Ø {data.trip.sail_avg_kn?.replace(' kn', '') || '--'}</strong>
+                                                        <span className="mx-1">•</span>
+                                                        ▲ <strong className="text-cyan-300 font-bold">{data.trip.sail_max_kn}</strong>
+                                                    </span>
+                                                ) : (
+                                                    <strong className="text-cyan-300 font-bold">Ø {data?.trip?.sail_avg_kn || '--'}</strong>
+                                                )}
+                                            </span>
                                         </div>
-                                        <div className="flex justify-between items-center text-yellow-400 font-bold">
-                                            <span>🚤 Motore: {data?.trip?.engine_time || '0m'}</span>
-                                            <span>{data?.trip?.engine_nm || '0.00 NM'} <span className="text-gray-500 font-normal">({enginePct}%)</span></span>
+
+                                        {/* Riga Motore */}
+                                        <div className="grid grid-cols-[58px_44px_1fr_auto] items-center text-[9.5px] leading-none gap-1 py-0.5">
+                                            <span className="text-yellow-400 font-bold">🚤 Motore</span>
+                                            <span className="text-white font-medium">{data?.trip?.engine_time || '0m'}</span>
+                                            <span className="text-yellow-400 font-bold truncate">
+                                                {data?.trip?.engine_nm || '0.00 NM'} <span className="text-gray-300 font-bold text-[8.5px]">({enginePct}%)</span>
+                                            </span>
+                                            <span className="text-right font-mono text-[9px] text-gray-400 whitespace-nowrap">
+                                                <span className="text-yellow-300 font-bold">Ø {data?.trip?.engine_avg_kn || '--'}</span>
+                                            </span>
                                         </div>
-                                        <div className="flex justify-between items-center text-white font-black border-t border-white/5 pt-1 mt-0.5">
-                                            <span>⏱️ Totale: {data?.trip?.total_nav_time || '0m'}</span>
-                                            <span>{data?.trip?.total_nm || '0.00 NM'}</span>
+
+                                        {/* Riga Totale */}
+                                        <div className="grid grid-cols-[58px_44px_1fr_auto] items-center text-[9.5px] leading-none gap-1 border-t border-white/5 pt-1.5 mt-0.5">
+                                            <span className="text-gray-400 font-bold">⏱️ Totale</span>
+                                            <span className="text-gray-200 font-medium">{data?.trip?.total_nav_time || '0m'}</span>
+                                            <span className="text-white font-black truncate">
+                                                {data?.trip?.total_nm || '0.00 NM'}
+                                            </span>
+                                            <span className="text-right font-mono text-[9px] text-gray-300 whitespace-nowrap">
+                                                <span className="text-white font-bold">Ø {data?.trip?.total_avg_kn || '--'}</span>
+                                            </span>
                                         </div>
                                     </div>
                                 </div>

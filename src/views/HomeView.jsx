@@ -432,6 +432,44 @@ const MapPlugins = ({
     );
 };
 
+/** Funzione universale di copia sicura anti-scroll e anti-selezione per iOS Safari */
+const copyToClipboardSafe = (text, onSuccess) => {
+    if (!text) return;
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(() => {
+            if (onSuccess) onSuccess();
+        }).catch(() => {});
+        return;
+    }
+
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.setAttribute("readonly", "");
+    textArea.style.position = "absolute";
+    textArea.style.left = "-9999px";
+    textArea.style.top = `${window.pageYOffset || document.documentElement.scrollTop || 0}px`;
+    textArea.style.fontSize = "12pt";
+    textArea.style.opacity = "0";
+
+    document.body.appendChild(textArea);
+    textArea.select();
+    textArea.setSelectionRange(0, 99999);
+
+    try {
+        document.execCommand('copy');
+        if (onSuccess) onSuccess();
+    } catch (e) {
+        console.error("Copia fallita", e);
+    }
+
+    document.body.removeChild(textArea);
+
+    if (window.getSelection) {
+        const sel = window.getSelection();
+        if (sel) sel.removeAllRanges();
+    }
+};
+
 // ============================================================
 // 4. VISTA PRINCIPALE HOME
 // ============================================================
@@ -656,8 +694,8 @@ const HomeView = ({ manager, onTabChange }) => {
 
                         {/* RIGA 1B: Coordinate Nautiche con riga dedicata (visibile solo se all'ancora) */}
                         {data?.anchor?.lat && (
-                            <div className="w-full flex items-center justify-between mt-0.5 border-b border-white/5 pb-2">
-                                <span
+                            <div className="w-full flex items-center justify-between mt-0.5 border-b border-white/5 pb-2 select-none">
+                                <div
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         if (!data?.anchor?.status) return;
@@ -668,31 +706,24 @@ const HomeView = ({ manager, onTabChange }) => {
                                             ? `⛵ ROTEVISTA: [${data.anchor.description || data.anchor.status}] | D: ${data.anchor.boat_dist?.toFixed(1) || '0.0'}m | ${formatNautic(data.anchor.lat, true)} ${formatNautic(data.anchor.lon, false)} | R: ${data.anchor.radius?.toFixed(0) || '0'}m | Prec: ±${data.anchor.std_dev?.toFixed(1) || '0.0'}m | Fondale: ${data.anchor.depth?.toFixed(1) || '0.0'}m | Catena: ${data.anchor.chain?.toFixed(0) || '0'}m | Volvo: ${data.anchor.engine_on ? 'ON' : 'OFF'} (${data.anchor.engine_v?.toFixed(1) || '0.0'}V)${data.anchor.score > 0 ? ` [Score: ${data.anchor.score}/70]` : ''}`
                                             : `⛵ ROTEVISTA: ${data.anchor.description || data.anchor.status}`;
                                         
-                                        if (navigator.clipboard && window.isSecureContext) {
-                                            navigator.clipboard.writeText(textToCopy).then(() => {
-                                                setIsCopied(true);
-                                                setTimeout(() => setIsCopied(false), 2000);
-                                            });
-                                        } else {
-                                            const textArea = document.createElement("textarea");
-                                            textArea.value = textToCopy;
-                                            textArea.style.position = "fixed";
-                                            textArea.style.opacity = "0";
-                                            document.body.appendChild(textArea);
-                                            textArea.focus();
-                                            textArea.select();
-                                            document.execCommand('copy');
+                                        copyToClipboardSafe(textToCopy, () => {
                                             setIsCopied(true);
                                             setTimeout(() => setIsCopied(false), 2000);
-                                            document.body.removeChild(textArea);
-                                        }
+                                        });
                                     }}
-                                    className={`text-[10px] font-mono tracking-tight cursor-pointer transition-colors duration-200 uppercase font-black leading-none ${
-                                        isCopied ? 'text-green-400 animate-pulse' : 'text-gray-400 hover:text-white'
-                                    }`}
+                                    className="cursor-pointer select-none text-[10px] font-mono tracking-tight uppercase font-black leading-none"
+                                    title="Tocca per copiare il report telemetrico negli appunti"
                                 >
-                                    {isCopied ? "✓ Copiato in appunti" : `📌 Posiz: ${formatNautic(data.anchor.lat, true)}   ${formatNautic(data.anchor.lon, false)}`}
-                                </span>
+                                    {isCopied ? (
+                                        <span key="copied-feedback" className="text-green-400 font-bold block">
+                                            ✓ Copiato!
+                                        </span>
+                                    ) : (
+                                        <span key="coords-display" className="text-gray-400 hover:text-white block">
+                                            📌 Posiz: {formatNautic(data.anchor.lat, true)} &nbsp; {formatNautic(data.anchor.lon, false)}
+                                        </span>
+                                    )}
+                                </div>
                             </div>
                         )}
 
@@ -1076,43 +1107,50 @@ const HomeView = ({ manager, onTabChange }) => {
                             </span>
 
                             {/* RIGA A: VELA */}
-                            <div className="grid grid-cols-[75px_55px_1fr_45px] items-center text-[10px] leading-none">
-                                <span className="flex items-center gap-1 text-cyan-400 font-bold">
+                            <div className="grid grid-cols-[62px_48px_1fr_auto] items-center text-[10px] leading-none gap-1 py-0.5">
+                                <span className="flex items-center gap-1 text-cyan-400 font-bold truncate">
                                     <span className="text-xs">⛵</span> Vela
                                 </span>
                                 <span className="text-white font-medium">{data.trip.sail_time || '0m'}</span>
-                                <span className="text-cyan-400 font-bold text-right text-[10px]">
-                                    {data.trip.sail_nm || '0.00 NM'}
+                                <span className="text-cyan-400 font-bold truncate">
+                                    {data.trip.sail_nm || '0.00 NM'} <span className="text-gray-300 font-bold text-[9.5px]">({sailPct}%)</span>
                                 </span>
-                                <span className="text-gray-500 font-normal text-right text-[9px]">
-                                    ({sailPct}%)
+                                <span className="text-right font-mono text-[9.5px] text-gray-400 whitespace-nowrap">
+                                    <span className="text-cyan-300 font-bold">Ø {data?.trip?.sail_avg_kn || '--'}</span>
+                                    {data?.trip?.sail_max_kn && data.trip.sail_max_kn !== "--" && (
+                                        <span className="ml-1.5 text-gray-300 font-normal">
+                                            Max <strong className="text-cyan-300 font-bold">{data.trip.sail_max_kn}</strong>
+                                        </span>
+                                    )}
                                 </span>
                             </div>
 
                             {/* RIGA B: MOTORE */}
-                            <div className="grid grid-cols-[75px_55px_1fr_45px] items-center text-[10px] leading-none">
-                                <span className="flex items-center gap-1 text-yellow-400 font-bold">
+                            <div className="grid grid-cols-[62px_48px_1fr_auto] items-center text-[10px] leading-none gap-1 py-0.5">
+                                <span className="flex items-center gap-1 text-yellow-400 font-bold truncate">
                                     <span className="text-xs">🚤</span> Motore
                                 </span>
                                 <span className="text-white font-medium">{data.trip.engine_time || '0m'}</span>
-                                <span className="text-yellow-400 font-bold text-right text-[10px]">
-                                    {data.trip.engine_nm || '0.00 NM'}
+                                <span className="text-yellow-400 font-bold truncate">
+                                    {data.trip.engine_nm || '0.00 NM'} <span className="text-gray-300 font-bold text-[9.5px]">({enginePct}%)</span>
                                 </span>
-                                <span className="text-gray-500 font-normal text-right text-[9px]">
-                                    ({enginePct}%)
+                                <span className="text-right font-mono text-[9.5px] text-gray-400 whitespace-nowrap">
+                                    <span className="text-yellow-300 font-bold">Ø {data?.trip?.engine_avg_kn || '--'}</span>
                                 </span>
                             </div>
 
                             {/* RIGA C: TOTALE TRATTA */}
-                            <div className="grid grid-cols-[75px_55px_1fr_45px] items-center text-[10px] border-t border-white/5 pt-2 leading-none">
-                                <span className="flex items-center gap-1 text-gray-400 font-bold">
+                            <div className="grid grid-cols-[62px_48px_1fr_auto] items-center text-[10px] leading-none gap-1 border-t border-white/5 pt-2 mt-1">
+                                <span className="flex items-center gap-1 text-gray-400 font-bold truncate">
                                     <span className="text-xs">⏱️</span> Totale
                                 </span>
                                 <span className="text-gray-200 font-medium">{data.trip.total_nav_time || '0m'}</span>
-                                <span className="text-white font-black text-right text-[11px]">
+                                <span className="text-white font-black truncate">
                                     {data.trip.total_nm || '0.00 NM'}
                                 </span>
-                                <span className="text-right"></span>
+                                <span className="text-right font-mono text-[9.5px] text-gray-300 whitespace-nowrap">
+                                    <span className="text-white font-bold">Ø {data?.trip?.total_avg_kn || '--'}</span>
+                                </span>
                             </div>
                         </div>
                     );
