@@ -125,6 +125,57 @@ const formatNautic = (val, isLat) => {
     return `${deg}° ${min}'${hemi}`;
 };
 
+/** Ricava Bandiera e Nazione dalle prime 3 cifre dell'MMSI (Tabella ITU MID Completa) */
+const getVesselFlag = (idStr) => {
+    if (!idStr) return "";
+    const mmsi = String(idStr).split(':').pop();
+    if (!mmsi || mmsi.length < 3) return "";
+    const mid = parseInt(mmsi.substring(0, 3), 10);
+
+    const midMap = {
+        // Mediterraneo & Europa
+        247: "🇮🇹 ITA", 237: "🇬🇷 GRC", 239: "🇬🇷 GRC", 240: "🇬🇷 GRC", 241: "🇬🇷 GRC",
+        238: "🇭🇷 CRO", 278: "🇸🇮 SLO", 262: "🇲🇪 MNE", 201: "🇦🇱 ALB", 271: "🇹🇷 TUR",
+        212: "🇨🇾 CYP", 248: "🇲🇹 MLT", 249: "🇲🇹 MLT", 224: "🇪🇸 ESP", 225: "🇪🇸 ESP",
+        226: "🇫🇷 FRA", 227: "🇫🇷 FRA", 228: "🇫🇷 FRA", 254: "🇲🇨 MCO", 255: "🇵🇹 POR",
+        263: "🇵🇹 POR", 268: "🇸🇲 SMR", 232: "🇬🇧 GBR", 233: "🇬🇧 GBR", 234: "🇬🇧 GBR",
+        235: "🇬🇧 GBR", 236: "🇬🇮 GIB", 250: "🇮🇲 IOM", 269: "🇨🇭 SUI", 203: "🇦🇹 AUT",
+        211: "🇩🇪 DEU", 218: "🇩🇪 DEU", 205: "🇧🇪 BEL", 244: "🇳🇱 NLD", 245: "🇳🇱 NLD",
+        246: "🇳🇱 NLD", 257: "🇳🇴 NOR", 258: "🇳🇴 NOR", 259: "🇳🇴 NOR", 219: "🇩🇰 DNK",
+        220: "🇩🇰 DNK", 265: "🇸🇪 SWE", 266: "🇸🇪 SWE", 230: "🇫🇮 FIN", 261: "🇵🇱 POL",
+        272: "🇺🇦 UKR", 273: "🇷🇺 RUS", 264: "🇷🇴 ROU", 207: "🇧🇬 BGR", 253: "🇱🇺 LUX",
+        428: "🇮🇱 ISR", 622: "🇪🇬 EGY", 672: "🇹🇳 TUN",
+        // Bandiere di Comodità & Internazionali comuni
+        319: "🇰🇾 CYM", 308: "🇧🇸 BHS", 309: "🇧🇸 BHS", 311: "🇧🇸 BHS", 378: "🇻🇬 VGB",
+        310: "🇧🇲 BMU", 375: "🇻🇨 VCT", 376: "🇻🇨 VCT", 377: "🇻🇨 VCT", 312: "🇧🇿 BLZ",
+        304: "🇦🇬 ATG", 305: "🇦🇬 ATG", 351: "🇵🇦 PAN", 352: "🇵🇦 PAN", 353: "🇵🇦 PAN",
+        354: "🇵🇦 PAN", 355: "🇵🇦 PAN", 356: "🇵🇦 PAN", 357: "🇵🇦 PAN", 370: "🇵🇦 PAN",
+        371: "🇵🇦 PAN", 372: "🇵🇦 PAN", 373: "🇵🇦 PAN", 636: "🇱🇷 LBR", 538: "🇲🇭 MHL",
+        518: "🇨🇰 COK", 576: "🇻🇺 VUT", 577: "🇻🇺 VUT", 664: "🇸🇨 SYC", 338: "🇺🇸 USA",
+        366: "🇺🇸 USA", 367: "🇺🇸 USA", 368: "🇺🇸 USA", 369: "🇺🇸 USA", 477: "🇭🇰 HKG",
+        563: "🇸🇬 SGP", 564: "🇸🇬 SGP", 565: "🇸🇬 SGP", 566: "🇸🇬 SGP", 412: "🇨🇳 CHN",
+        413: "🇨🇳 CHN", 414: "🇨🇳 CHN"
+    };
+    return midMap[mid] || "";
+};
+
+/** Formatta la stringa ETA in formato orario leggibile */
+const formatEta = (etaStr) => {
+    if (!etaStr) return "";
+    try {
+        const d = new Date(etaStr);
+        if (!isNaN(d.getTime())) {
+            const day = d.getDate();
+            const months = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set", "Ott", "Nov", "Dic"];
+            const month = months[d.getMonth()];
+            const hh = String(d.getHours()).padStart(2, '0');
+            const mm = String(d.getMinutes()).padStart(2, '0');
+            return `${day} ${month}, ${hh}:${mm}`;
+        }
+    } catch (e) {}
+    return etaStr;
+};
+
 /** Restituisce i 3 cerchi di distanza dinamici in base allo zoom attuale */
 const getDynamicRangeRings = (zoom) => {
     if (zoom >= 19) return [{ r: 15, label: "15m" }, { r: 30, label: "30m" }, { r: 45, label: "45m" }];
@@ -383,6 +434,7 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
     const [mapBounds, setMapBounds] = useState(null); // Confini visibili dello schermo
     const [isMmsiCopied, setIsMmsiCopied] = useState(false); // Feedback copia MMSI
     const [isGpsCopied, setIsGpsCopied] = useState(false); // Feedback copia Coordinate GPS proprie
+    const [isRegistryView, setIsRegistryView] = useState(false); // Toggle tra vista Tattica e Registro Nave
 
     // Salva l'ultimo punto GPS valido in memoria locale a ogni ricezione dati
     useEffect(() => {
@@ -559,7 +611,7 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
         return segments;
     }, [data?.environment?.gps_history, data?.anchor?.engine_on, data?.anchor?.status, ownCoords, isNightMode]);
 
-    /** 1. Selezione da LISTA: sposta la telecamera e memorizza il punto di ritorno */
+    /** 1. Selezione da LISTA: preserva la vista corrente (Tattica o Registro) durante l'esplorazione */
     const handleSelectFromList = (vessel) => {
         if (!cameraSnapshotRef.current) {
             cameraSnapshotRef.current = {
@@ -573,7 +625,7 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
         setAutoCenter(false);
     };
 
-    /** 2. Selezione diretta da MAPPA: apre solo i dati, MAPPA FERMA al 100% */
+    /** 2. Selezione diretta da MAPPA: preserva la vista corrente durante l'esplorazione */
     const handleSelectFromMap = (vessel) => {
         setSelectedTarget(vessel);
         setFlyTarget(null); // Nessuna animazione telecamera
@@ -589,9 +641,10 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
         }
     };
 
-    /** Chiusura totale (Tasto X): chiude tutto e ripristina la mappa al punto di partenza */
+    /** Chiusura totale (Tasto X): chiude tutto e resetta la modalità alla Tattica di default */
     const handleCloseAll = () => {
         setSelectedTarget(null);
+        setIsRegistryView(false); // Reset alla modalità Tattica di default per la prossima consultazione
         setFlyTarget(null);
         setIsListOpen(false);
         if (cameraSnapshotRef.current) {
@@ -612,6 +665,7 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
         if (target && target.lat && target.lon) {
             hasHandledDeepLinkRef.current = true;
             setAutoCenter(false);
+            setIsRegistryView(false); // Forza sempre la visuale Tattica anticollisione per gli alert Telegram
             setSelectedTarget(target);
             setFlyTarget(target); // Salto nativo sicuro sul bersaglio
 
@@ -1038,7 +1092,7 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                             <div className="flex flex-col p-3 font-mono gap-2 overflow-y-auto">
                                 {/* Header: Riorganizzato su 2 righe a tutta larghezza con padding conforme alle curve */}
                                 <div className="flex flex-col border-b border-white/10 pb-2 px-1 pt-0.5 shrink-0 gap-1">
-                                    {/* Riga 1: Tasto Indietro, Nome Nave e Tasto Chiudi */}
+                                    {/* Riga 1: Tasto Indietro, Nome Nave + Icona Flip e Tasto Chiudi */}
                                     <div className="flex items-center justify-between">
                                         <button
                                             onClick={handleBackToList}
@@ -1046,12 +1100,34 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                                         >
                                             <span>←</span> LISTA
                                         </button>
-                                        <div className="flex items-center justify-center gap-1.5 truncate px-2">
+
+                                        {/* Titolo Centrale Cliccabile a Piena Area (Emoji + Nome + Icona insieme) */}
+                                        <div
+                                            onClick={() => setIsRegistryView(prev => !prev)}
+                                            className="flex items-center justify-center gap-1.5 truncate px-2 py-1 rounded-xl cursor-pointer hover:bg-white/5 active:scale-95 transition-all select-none"
+                                            title="Tocca per cambiare vista (Tattica / Registro)"
+                                        >
                                             <span className="text-base shrink-0">{ship.emoji}</span>
                                             <h4 className="text-sm font-black uppercase text-white truncate tracking-tight">
                                                 {activeTarget.name || 'Sconosciuto'}
                                             </h4>
+                                            
+                                            {/* Badge Icona Visivo (Interagisce con il tocco dell'intero titolo) */}
+                                            <div
+                                                className={`w-5 h-5 rounded-md flex items-center justify-center border shrink-0 transition-colors ${
+                                                    isRegistryView
+                                                        ? 'bg-cyan-500/30 border-cyan-400 text-cyan-300 shadow-[0_0_8px_rgba(6,182,212,0.4)]'
+                                                        : 'bg-white/10 border-white/15 text-gray-300'
+                                                }`}
+                                            >
+                                                {isRegistryView ? (
+                                                    <Navigation2 size={12} className="rotate-45 text-cyan-300" />
+                                                ) : (
+                                                    <span className="text-[11px] font-serif font-black leading-none">i</span>
+                                                )}
+                                            </div>
                                         </div>
+
                                         <button
                                             onClick={handleCloseAll}
                                             className="text-gray-400 hover:text-white p-1 shrink-0 rounded-lg active:scale-95 transition-transform"
@@ -1060,7 +1136,7 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                                         </button>
                                     </div>
 
-                                    {/* Riga 2: Tipo Nave, MMSI cliccabile e Freschezza a tutta larghezza (zero tagli) */}
+                                    {/* Riga 2: Tipo Nave, MMSI cliccabile e Orologio Segnale con icona */}
                                     <div className="flex items-center justify-center gap-1.5 text-[9.5px] font-bold text-gray-300 uppercase tracking-tight">
                                         <span>{ship.label}</span>
                                         <span className="text-gray-600">•</span>
@@ -1092,53 +1168,134 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                                         {ageTxt && (
                                             <>
                                                 <span className="text-gray-600">•</span>
-                                                <span className="text-gray-400">{ageTxt}</span>
+                                                <span className="text-gray-400 flex items-center gap-0.5">
+                                                    ⏱️ {ageTxt}
+                                                </span>
                                             </>
                                         )}
                                     </div>
                                 </div>
 
-                                {/* Griglia Metriche Live (SOG, Distanza, CPA e TCPA aggiornati ogni 5s) */}
-                                <div className="grid grid-cols-2 gap-1.5 text-[10px] shrink-0">
-                                    <div className="bg-white/5 p-2 rounded-xl">
-                                        <span className="text-[7.5px] text-gray-400 uppercase block">SOG / COG</span>
-                                        <span className="font-bold text-white text-xs">{activeTarget.sog} kn @ {activeTarget.cog}°</span>
-                                    </div>
-                                    <div className="bg-white/5 p-2 rounded-xl">
-                                        <span className="text-[7.5px] text-gray-400 uppercase block">Distanza</span>
-                                        <span className="font-bold text-white text-xs truncate" title={formatNavDistance(activeTarget.dist)}>
-                                            {formatNavDistance(activeTarget.dist)}
-                                        </span>
-                                    </div>
-                                    <div className="bg-white/5 p-2 rounded-xl">
-                                        <span className="text-[7.5px] text-gray-400 uppercase block">CPA Minimo</span>
-                                        <span className="font-bold text-cyan-400 text-xs truncate" title={formatNavDistance(activeTarget.cpa)}>
-                                            {formatNavDistance(activeTarget.cpa)}
-                                        </span>
-                                    </div>
-                                    <div className="bg-white/5 p-2 rounded-xl">
-                                        <span className="text-[7.5px] text-gray-400 uppercase block">Tempo a CPA</span>
-                                        <span className="font-bold text-cyan-400 text-xs">
-                                            {activeTarget.tcpa !== null && activeTarget.tcpa !== undefined && activeTarget.tcpa >= 0 ? `${Math.round(activeTarget.tcpa)} min` : '--'}
-                                        </span>
-                                    </div>
-                                </div>
+                                {/* CONTENUTO VARIABILE: VISTA TATTICA (Default) oppure VISTA REGISTRO (Flip Placeholder) */}
+                                {!isRegistryView ? (
+                                    <>
+                                        {/* Griglia Metriche Live (SOG, Distanza, CPA e TCPA) */}
+                                        <div className="grid grid-cols-2 gap-1.5 text-[10px] shrink-0">
+                                            <div className="bg-white/5 p-2 rounded-xl">
+                                                <span className="text-[7.5px] text-gray-400 uppercase block">SOG / COG</span>
+                                                <span className="font-bold text-white text-xs">{activeTarget.sog} kn @ {activeTarget.cog}°</span>
+                                            </div>
+                                            <div className="bg-white/5 p-2 rounded-xl">
+                                                <span className="text-[7.5px] text-gray-400 uppercase block">Distanza</span>
+                                                <span className="font-bold text-white text-xs truncate" title={formatNavDistance(activeTarget.dist)}>
+                                                    {formatNavDistance(activeTarget.dist)}
+                                                </span>
+                                            </div>
+                                            <div className="bg-white/5 p-2 rounded-xl">
+                                                <span className="text-[7.5px] text-gray-400 uppercase block">CPA Minimo</span>
+                                                <span className="font-bold text-cyan-400 text-xs truncate" title={formatNavDistance(activeTarget.cpa)}>
+                                                    {formatNavDistance(activeTarget.cpa)}
+                                                </span>
+                                            </div>
+                                            <div className="bg-white/5 p-2 rounded-xl">
+                                                <span className="text-[7.5px] text-gray-400 uppercase block">Tempo a CPA</span>
+                                                <span className="font-bold text-cyan-400 text-xs">
+                                                    {activeTarget.tcpa !== null && activeTarget.tcpa !== undefined && activeTarget.tcpa >= 0 ? `${Math.round(activeTarget.tcpa)} min` : '--'}
+                                                </span>
+                                            </div>
+                                        </div>
 
-                                {/* Box Avvistamento a Vista */}
-                                {activeTarget.sightingTxt && (
-                                    <div className="bg-cyan-500/10 border border-cyan-500/30 px-2.5 py-1.5 rounded-xl text-[9px] text-cyan-200 shrink-0 flex items-center gap-1.5">
-                                        <span className="text-cyan-400 font-black uppercase shrink-0">👀 Vista:</span>
-                                        <span className="truncate">{activeTarget.sightingTxt}</span>
-                                    </div>
-                                )}
+                                        {/* Box Avvistamento a Vista */}
+                                        {activeTarget.sightingTxt && (
+                                            <div className="bg-cyan-500/10 border border-cyan-500/30 px-2.5 py-1.5 rounded-xl text-[9px] text-cyan-200 shrink-0 flex items-center gap-1.5">
+                                                <span className="text-cyan-400 font-black uppercase shrink-0">👀 Vista:</span>
+                                                <span className="truncate">{activeTarget.sightingTxt}</span>
+                                            </div>
+                                        )}
 
-                                {/* Box Analisi Incrocio & Regole COLREGs */}
-                                {activeTarget.crossDir && (
-                                    <div className="bg-white/5 p-2 rounded-xl text-[9px] text-gray-300 border border-white/5 overflow-y-auto leading-normal whitespace-pre-line max-h-20">
-                                        <span className="text-orange-400 font-bold uppercase block mb-1">Analisi Incrocio:</span>
-                                        {activeTarget.crossDir}
-                                    </div>
-                                )}
+                                        {/* Box Analisi Incrocio & Regole COLREGs */}
+                                        {activeTarget.crossDir && (
+                                            <div className="bg-white/5 p-2 rounded-xl text-[9px] text-gray-300 border border-white/5 overflow-y-auto leading-normal whitespace-pre-line max-h-20">
+                                                <span className="text-orange-400 font-bold uppercase block mb-1">Analisi Incrocio:</span>
+                                                {activeTarget.crossDir}
+                                            </div>
+                                        )}
+                                    </>
+                                ) : (() => {
+                                    const flagTxt = getVesselFlag(activeTarget.id);
+                                    const rawMmsi = String(activeTarget.id || '').split(':').pop();
+                                    const lengthM = activeTarget.length ? Math.round(activeTarget.length) : null;
+                                    const beamM = activeTarget.beam ? Math.round(activeTarget.beam) : null;
+                                    const draftM = activeTarget.draft ? activeTarget.draft.toFixed(1) : null;
+                                    const etaFormatted = formatEta(activeTarget.eta);
+
+                                    return (
+                                        <div className="flex flex-col gap-1.5 text-[10px] shrink-0 font-mono">
+                                            {/* Riga 1: Dimensioni & Pescaggio */}
+                                            <div className="grid grid-cols-2 gap-1.5">
+                                                <div className="bg-white/5 p-2 rounded-xl border border-white/5 flex flex-col justify-center">
+                                                    <span className="text-[7.5px] text-gray-400 uppercase block tracking-wider">Dimensioni (L × B)</span>
+                                                    <span className="font-bold text-white text-xs mt-0.5">
+                                                        {lengthM ? `${lengthM}m × ${beamM ? `${beamM}m` : '--'}` : '--'}
+                                                    </span>
+                                                </div>
+                                                <div className="bg-white/5 p-2 rounded-xl border border-white/5 flex flex-col justify-center">
+                                                    <span className="text-[7.5px] text-gray-400 uppercase block tracking-wider">Pescaggio (Draft)</span>
+                                                    <span className="font-bold text-white text-xs mt-0.5">
+                                                        {draftM ? `${draftM}m` : '--'}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            {/* Riga 2: Destinazione & ETA */}
+                                            <div className="bg-white/5 p-2 rounded-xl border border-white/5 flex flex-col justify-center">
+                                                <span className="text-[7.5px] text-gray-400 uppercase block tracking-wider">Destinazione & ETA</span>
+                                                <span className="font-bold text-cyan-300 text-xs mt-0.5 truncate">
+                                                    {activeTarget.destination ? `🎯 ${activeTarget.destination}${etaFormatted ? ` • ETA: ${etaFormatted}` : ''}` : 'NON DICHIARATA'}
+                                                </span>
+                                            </div>
+
+                                            {/* Riga 3: Stato AIS (Classe A/B) & Radio VHF + Bandiera */}
+                                            <div className="grid grid-cols-2 gap-1.5">
+                                                <div className="bg-white/5 p-2 rounded-xl border border-white/5 flex flex-col justify-center">
+                                                    <span className="text-[7.5px] text-gray-400 uppercase block tracking-wider">Stato AIS (Classe)</span>
+                                                    <span className="font-bold text-white text-[11px] mt-0.5 truncate block">
+                                                        {activeTarget.isAnchored ? 'All\'Ancora' : (activeTarget.sog >= 0.5 ? 'In Navigazione' : 'Alla Deriva')}
+                                                        <span className="text-gray-400 font-normal ml-1">({activeTarget.aisClass || 'B'})</span>
+                                                    </span>
+                                                </div>
+                                                <div className="bg-white/5 p-2 rounded-xl border border-white/5 flex flex-col justify-center">
+                                                    <span className="text-[7.5px] text-gray-400 uppercase block tracking-wider">Radio & Bandiera</span>
+                                                    <span className="font-bold text-white text-[11px] mt-0.5 truncate block flex items-center gap-1">
+                                                        {activeTarget.callsign ? (
+                                                            <span>📻 {activeTarget.callsign}</span>
+                                                        ) : (
+                                                            <span className="text-gray-400">📻 --</span>
+                                                        )}
+                                                        {flagTxt && (
+                                                            <>
+                                                                <span className="text-gray-500 font-normal">•</span>
+                                                                <span className="text-cyan-300 font-bold">{flagTxt}</span>
+                                                            </>
+                                                        )}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            {/* Riga 4: Pulsante Diretto VesselFinder per Foto e Scheda Ufficiale */}
+                                            {rawMmsi && (
+                                                <a
+                                                    href={`https://www.vesselfinder.com/vessels/details/${rawMmsi}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="mt-0.5 w-full bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/40 text-cyan-300 font-bold py-2 rounded-xl flex items-center justify-center gap-1.5 active:scale-95 transition-all text-xs tracking-wide no-underline shadow-lg"
+                                                >
+                                                    <span>🌐</span> Vedi Foto su VesselFinder
+                                                </a>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
                             </div>
                         );
                     })() : (
