@@ -933,12 +933,12 @@ const HomeView = ({ manager, onTabChange }) => {
                             />
                         )}
 
-                        {/* CERCHIO DI SICUREZZA DEFINITIVO */}
+                        {/* CERCHIO DI SICUREZZA DEFINITIVO (Allineato 1:1 al Raggio di Guardia dichiarato) */}
                         {data?.anchor?.lat && data?.anchor?.lon && data.anchor.radius > 0 &&
                          (data.anchor.status === 'LOCKED' || data.anchor.status === 'DRAGGING' || data.anchor.status === 'DRIFTING') && (
                             <Circle
                                 center={[data.anchor.lat, data.anchor.lon]}
-                                radius={data.anchor.radius + Math.max(15, data.anchor.radius * 0.30)}
+                                radius={data.anchor.radius}
                                 pathOptions={{
                                     color: (data.anchor.status === 'DRAGGING' || data.anchor.status === 'DRIFTING') ? '#ef4444' : '#22d3ee',
                                     fillOpacity: 0,
