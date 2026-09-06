@@ -1,21 +1,22 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 /**
- * 1. GESTIONE DINAMICA DELL'INDIRIZZO IP
- * Determina se puntare all'IP fisso della barca o all'host attuale.
+ * 1. GESTIONE DINAMICA DEGLI ENDPOINT (HTTP Primario su 1880, HTTPS Fallback su 1881)
  */
-const getBaseUrl = () => {
+const getTargetHost = () => {
     const host = window.location.hostname;
-    
-    // Se siamo in sviluppo locale (localhost) o se accediamo tramite l'IP del Mac (192.168.x.x)
     if (host === 'localhost' || host === '127.0.0.1' || host.startsWith('192.168.')) {
-        // Forza l'indirizzo IP del Cerbo GX / Node-RED in HTTPS
-        return 'https://192.168.111.240:1881';
+        return '192.168.111.240';
     }
-    
-    // Se l'app è installata direttamente su SignalK, usa l'host corrente
-    return `https://${host}:1881`;
+    return host;
 };
+
+const targetHost = getTargetHost();
+const HTTP_BASE_URL = `http://${targetHost}:1880`;
+const HTTPS_BASE_URL = `https://${targetHost}:1881`;
+
+// Verifica vincolo browser: se la webapp è caricata in HTTPS, vietato tentare HTTP (Mixed Content)
+const isPageHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
 
 export const useBoatData = () => {
     // --- STATI DATI ---
@@ -28,66 +29,81 @@ export const useBoatData = () => {
     const [error, setError] = useState(null);             // Cattura errori SSL o di rete per la modale
     const [isUpdating, setIsUpdating] = useState(false);  // True mentre un comando POST è in corso
 
-    // Costruzione degli endpoint
-    const baseUrl = getBaseUrl();
-    const apiUrl = `${baseUrl}/api/boat`;
-    const controlUrl = `${baseUrl}/api/boat/control`;
+    // Riferimento dinamico all'endpoint attivo: HTTP 1880 primario, HTTPS 1881 fallback
+    const activeBaseUrlRef = useRef(isPageHttps ? HTTPS_BASE_URL : HTTP_BASE_URL);
 
     // Lock di rete per evitare richieste sovrapposte
     const isFetchingRef = useRef(false);
 
     /**
-     * 2. RECUPERO DATI (GET CON TIMEOUT E SEMAFORO ANTI-SOVRAPPOSIZIONE)
-     */
-    const fetchData = useCallback(async () => {
-        if (isFetchingRef.current) return;
-        isFetchingRef.current = true;
+         * 2. RECUPERO DATI CON FALLBACK DINAMICO (HTTP 1880 -> HTTPS 1881)
+         */
+        const executeFetch = async (baseUrl) => {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 3500);
 
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 4000); // Timeout a 4 secondi
-
-        try {
-            const response = await fetch(apiUrl, { signal: controller.signal });
-            clearTimeout(timeoutId);
-            
-            if (!response.ok) {
-                throw new Error(`Errore Server: ${response.status}`);
+            try {
+                const response = await fetch(`${baseUrl}/api/boat`, { signal: controller.signal });
+                clearTimeout(timeoutId);
+                if (!response.ok) throw new Error(`Errore Server: ${response.status}`);
+                return await response.json();
+            } catch (err) {
+                clearTimeout(timeoutId);
+                throw err;
             }
+        };
 
-            const jsonData = await response.json();
-            
-            setData(jsonData);
-            setLastUpdate(new Date());
-            setIsDataStale(false);
-            setError(null);       // Reset errore: connessione OK
-            setIsUpdating(false);
-            
-        } catch (e) {
-            clearTimeout(timeoutId);
-            if (e.name !== 'AbortError') {
-                console.error("Fetch Error:", e);
-                setError(e.message);
+        const fetchData = useCallback(async () => {
+            if (isFetchingRef.current) return;
+            isFetchingRef.current = true;
+
+            try {
+                let jsonData;
+                try {
+                    // Tentativo primario sull'endpoint attivo (HTTP 1880)
+                    jsonData = await executeFetch(activeBaseUrlRef.current);
+                } catch (primaryErr) {
+                    // Fallback automatico su HTTPS 1881 se il tentativo HTTP fallisce
+                    if (!isPageHttps && activeBaseUrlRef.current === HTTP_BASE_URL) {
+                        console.warn("HTTP 1880 non raggiungibile, fallback su HTTPS 1881...");
+                        jsonData = await executeFetch(HTTPS_BASE_URL);
+                        activeBaseUrlRef.current = HTTPS_BASE_URL; // Salva HTTPS come attivo
+                    } else {
+                        throw primaryErr;
+                    }
+                }
+
+                setData(jsonData);
+                setLastUpdate(new Date());
+                setIsDataStale(false);
+                setError(null);       // Connessione riuscita: nessun errore
+                setIsUpdating(false);
+
+            } catch (e) {
+                if (e.name !== 'AbortError') {
+                    console.error("Fetch Error:", e);
+                    setError(e.message);
+                }
+                setIsDataStale(true);
+                setIsUpdating(false);
+            } finally {
+                isFetchingRef.current = false;
             }
-            setIsDataStale(true);
-            setIsUpdating(false);
-        } finally {
-            isFetchingRef.current = false;
-        }
-    }, [apiUrl]);
+        }, []);
 
-    /**
-     * 3. INVIO COMANDI (POST)
-     * Invia ordini agli Shelly o al Multiplus
-     */
-    const sendCommand = async (device, state) => {
-        setIsUpdating(true); // Attiva lo spinner di caricamento nella UI
-        
-        try {
-            const response = await fetch(controlUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ device, state })
-            });
+        /**
+         * 3. INVIO COMANDI (POST)
+         * Invia ordini agli Shelly o al Multiplus sull'endpoint attivo
+         */
+        const sendCommand = async (device, state) => {
+            setIsUpdating(true); // Attiva lo spinner di caricamento nella UI
+            
+            try {
+                const response = await fetch(`${activeBaseUrlRef.current}/api/boat/control`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ device, state })
+                });
 
             if (!response.ok) throw new Error("Comando fallito");
 
@@ -167,7 +183,7 @@ export const useBoatData = () => {
                       : secondsSinceLastUpdate < 30 ? 'bg-orange-500'
                       : 'bg-red-500';
 
-    // --- OGGETTO ESPORTO ---
+// --- OGGETTO ESPORTO ---
     return {
         data,                    // I dati della barca
         secondsSinceLastUpdate,  // Secondi dall'ultimo aggiornamento
@@ -175,7 +191,7 @@ export const useBoatData = () => {
         statusColor,             // Classe CSS per il pallino in alto a destra
         isUpdating,              // Boolean: comando in corso? (per spinner)
         error,                   // Stringa errore per modale SSL
-        apiUrl: baseUrl,         // URL base per sblocco manuale
+        apiUrl: HTTPS_BASE_URL,  // Garantisce che il tasto "Autorizza SSL" apra sempre l'HTTPS se necessario
         
         // Metodi per la UI
         toggleSwitch: (device, state) => sendCommand(device, state),
