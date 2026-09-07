@@ -237,8 +237,9 @@ const threatVesselLabelIcon = (vessel) => {
                 box-shadow: 0 4px 14px rgba(0,0,0,0.55);
                 white-space: nowrap;
                 font-family: monospace;
-                pointer-events: none;
-            ">
+                pointer-events: auto;
+                cursor: pointer;
+            " title="Tocca per nascondere etichetta (Acknowledge)">
                 <span style="font-size: 18px; line-height: 1;">${ship.emoji}</span>
                 <div style="display: flex; flex-direction: column; align-items: flex-start; line-height: 1.2;">
                     <span style="font-size: 13.5px; font-weight: 900; color: ${color}; text-transform: uppercase; letter-spacing: -0.2px;">
@@ -440,6 +441,9 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
     const [isMmsiCopied, setIsMmsiCopied] = useState(false); // Feedback copia MMSI
     const [isGpsCopied, setIsGpsCopied] = useState(false); // Feedback copia Coordinate GPS proprie
     const [isRegistryView, setIsRegistryView] = useState(false); // Toggle tra vista Tattica e Registro Nave
+
+    // Memoria bersagli silenziati con relativo stato di rischio al momento del tap
+    const [dismissedLabels, setDismissedLabels] = useState({}); // { [targetId]: 'ORANGE' | 'RED' }
 
     // Salva l'ultimo punto GPS valido in memoria locale a ogni ricezione dati
     useEffect(() => {
@@ -891,19 +895,61 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                                     icon={targetMarkerIcon(v, isSelected, currentZoom)}
                                     zIndexOffset={finalZIndex}
                                     eventHandlers={{
-                                        click: () => handleSelectFromMap(v)
+                                        click: () => {
+                                            handleSelectFromMap(v);
+                                            // Toccando la nave, l'etichetta viene ripristinata se era silenziata
+                                            if (dismissedLabels[v.id]) {
+                                                setDismissedLabels(prev => {
+                                                    const next = { ...prev };
+                                                    delete next[v.id];
+                                                    return next;
+                                                });
+                                            }
+                                        }
                                     }}
                                 />
 
-                                {/* Etichetta Tattica Fluttuante (Solo Allarmi Rossi, Warning Arancioni o Bersaglio Selezionato) */}
-                                {(isRedAlert || isOrangeWarn || isSelected) && (
-                                    <Marker
-                                        position={[v.lat, v.lon]}
-                                        icon={threatVesselLabelIcon(v)}
-                                        zIndexOffset={finalZIndex + 100}
-                                        interactive={false}
-                                    />
-                                )}
+                                {/* Etichetta Tattica Fluttuante con Stack Unmounting pulito e Acknowledge a cascata */}
+                                {(() => {
+                                    if (!isRedAlert && !isOrangeWarn && !isSelected) return null;
+
+                                    const dismissedRisk = dismissedLabels[v.id];
+
+                                    // RIARMO AUTOMATICO: se era silenziato in ARANCIONE ma è passato a ROSSO, mostra di nuovo!
+                                    const isAutoRearmed = dismissedRisk === 'ORANGE' && isRedAlert;
+
+                                    // FIX ACKNOWLEDGE ANCHE SU SELEZIONATI: Permette di nascondere l'etichetta fluttuante
+                                    // anche se la nave è selezionata (la telemetria rimane comunque visibile nella scheda in alto)
+                                    if (dismissedRisk && !isAutoRearmed) {
+                                        return null;
+                                    }
+
+                                    return (
+                                        <Marker
+                                            key={`threat-label-${v.id}`}
+                                            position={[v.lat, v.lon]}
+                                            icon={threatVesselLabelIcon(v)}
+                                            zIndexOffset={finalZIndex + 100}
+                                            interactive={true}
+                                            eventHandlers={{
+                                                click: (e) => {
+                                                    // Blocca la propagazione sia su Leaflet che sul touch nativo
+                                                    if (e) {
+                                                        if (e.originalEvent) {
+                                                            L.DomEvent.stopPropagation(e.originalEvent);
+                                                            L.DomEvent.preventDefault(e.originalEvent);
+                                                        }
+                                                    }
+                                                    // Silenzia l'etichetta permettendo a quella sottostante di prendere il focus
+                                                    setDismissedLabels(prev => ({
+                                                        ...prev,
+                                                        [v.id]: v.risk || 'ORANGE'
+                                                    }));
+                                                }
+                                            }}
+                                        />
+                                    );
+                                })()}
                             </React.Fragment>
                         );
                     })}
