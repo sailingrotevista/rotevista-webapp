@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { MapContainer, TileLayer, Marker, Polyline, Circle, useMap, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Polyline, Circle, Polygon, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { Plus, Minus, Target, Navigation2, ChevronDown, AlertTriangle, X, Copy, Check } from 'lucide-react';
 
@@ -180,6 +180,65 @@ const formatEta = (etaStr) => {
     } catch (e) {}
     return etaStr;
 };
+
+/** Calcola l'inviluppo convesso (Convex Hull 2D) con algoritmo Monotone Chain per sagomare i pontili */
+const computeConvexHull = (points) => {
+    if (!points || points.length < 3) return points;
+    const sorted = [...points].sort((a, b) => a[0] === b[0] ? a[1] - b[1] : a[0] - b[0]);
+    const crossProduct = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+
+    const lower = [];
+    for (const p of sorted) {
+        while (lower.length >= 2 && crossProduct(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) {
+            lower.pop();
+        }
+        lower.push(p);
+    }
+
+    const upper = [];
+    for (let i = sorted.length - 1; i >= 0; i--) {
+        const p = sorted[i];
+        while (upper.length >= 2 && crossProduct(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) {
+            upper.pop();
+        }
+        upper.push(p);
+    }
+
+    lower.pop();
+    upper.pop();
+    return lower.concat(upper);
+};
+
+/** Micro-Badge al baricentro del porto per identificare il bacino */
+const clusterBadgeIcon = (count) => new L.DivIcon({
+    html: `
+        <div style="
+            background: rgba(15, 23, 42, 0.88);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(56, 189, 248, 0.45);
+            border-radius: 8px;
+            padding: 2px 7px;
+            font-size: 9.5px;
+            font-weight: 900;
+            font-family: monospace;
+            color: #38bdf8;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            pointer-events: none;
+            text-transform: uppercase;
+            letter-spacing: 0.2px;
+        ">
+            <span>🏛️</span>
+            <span>Porto (${count})</span>
+        </div>
+    `,
+    className: 'harbor-cluster-badge-marker',
+    iconSize: [90, 22],
+    iconAnchor: [45, 11]
+});
 
 /** Restituisce i 3 cerchi di distanza dinamici in base allo zoom attuale */
 const getDynamicRangeRings = (zoom) => {
@@ -567,6 +626,55 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
         return liveMatch || selectedTarget;
     }, [selectedTarget, sortedTargets, ownShipTarget]);
 
+    // Raggruppamento e calcolo perimetri poligonali (Convex Hull con buffer) dei cluster portuali
+    const harborClusters = useMemo(() => {
+        const raw = data?.environment?.ais_targets || [];
+        const clustered = raw.filter(v => v.inCluster);
+        if (clustered.length < 3) return [];
+
+        // Raggruppa per clusterId se presente dal backend, altrimenti cluster unico
+        const groups = {};
+        clustered.forEach(v => {
+            const cId = v.clusterId || 'default_port';
+            if (!groups[cId]) groups[cId] = [];
+            groups[cId].push(v);
+        });
+
+        const result = [];
+        Object.keys(groups).forEach(cId => {
+            const vessels = groups[cId];
+            if (vessels.length < 3) return;
+
+            let sumLat = 0, sumLon = 0;
+            const paddedPoints = [];
+
+            // Genera 4 punti perimetrali con buffer di 18m attorno a ogni scafo per avvolgere i pontili
+            vessels.forEach(v => {
+                sumLat += v.lat;
+                sumLon += v.lon;
+                const cosLat = Math.cos(v.lat * Math.PI / 180) || 1;
+                const dLat = 18 / 111139;
+                const dLon = 18 / (111139 * cosLat);
+                paddedPoints.push([v.lat + dLat, v.lon]);
+                paddedPoints.push([v.lat - dLat, v.lon]);
+                paddedPoints.push([v.lat, v.lon + dLon]);
+                paddedPoints.push([v.lat, v.lon - dLon]);
+            });
+
+            const hull = computeConvexHull(paddedPoints);
+            const center = [sumLat / vessels.length, sumLon / vessels.length];
+
+            result.push({
+                id: cId,
+                center,
+                hull,
+                count: vessels.length
+            });
+        });
+
+        return result;
+    }, [data?.environment?.ais_targets]);
+
     /** Centro degli anelli: Bersaglio AIS selezionato (live) oppure la propria Barca */
     const rangeRingsCenter = useMemo(() => {
         if (activeTarget && !activeTarget.isOwnShip && activeTarget.lat && activeTarget.lon) {
@@ -718,6 +826,28 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                         opacity={isNightMode ? 0.85 : 0.75}
                     />
 
+                    {/* PERIMETRI POLIGONALI DEI PORTI / MARINE (CONVEX HULL CON BUFFER PONTILI) */}
+                    {harborClusters.map((cluster) => (
+                        <React.Fragment key={`harbor-hull-${cluster.id}`}>
+                            <Polygon
+                                positions={cluster.hull}
+                                pathOptions={{
+                                    color: '#38bdf8',
+                                    weight: 1.2,
+                                    dashArray: '5, 6',
+                                    fillColor: '#0284c7',
+                                    fillOpacity: isNightMode ? 0.12 : 0.08,
+                                    interactive: false
+                                }}
+                            />
+                            <Marker
+                                position={cluster.center}
+                                icon={clusterBadgeIcon(cluster.count)}
+                                interactive={false}
+                            />
+                        </React.Fragment>
+                    ))}
+
                     {/* SCIA DI NAVIGAZIONE PROPRIA (Vela: Ciano, Motore: Arancione) */}
                     {ownTrailSegments.map((seg, idx) => (
                         <Polyline
@@ -857,8 +987,8 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                                     />
                                 )}
 
-                                {/* 🟠 Cerchio Warning Arancione */}
-                                {!isRedAlert && isOrangeWarn && (
+                                {/* 🟠 Cerchio Warning Arancione (soppresso per barche ferme nel cluster portuale) */}
+                                {!isRedAlert && isOrangeWarn && !(v.inCluster && !isMoving) && (
                                     <Circle
                                         center={[v.lat, v.lon]}
                                         radius={Math.max(70, (v.sog || 1) * 35)}
@@ -911,6 +1041,9 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
 
                                 {/* Etichetta Tattica Fluttuante con Stack Unmounting pulito e Acknowledge a cascata */}
                                 {(() => {
+                                    // Disinquinamento visivo: sopprimi le etichette per barche ferme in banchina (mostra solo se selezionate dall'utente)
+                                    if (v.inCluster && !isMoving && !isSelected) return null;
+
                                     if (!isRedAlert && !isOrangeWarn && !isSelected) return null;
 
                                     const dismissedRisk = dismissedLabels[v.id];
@@ -1393,7 +1526,9 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                                 {/* Lista Bersagli AIS Circostanti */}
                                 {sortedTargets.map((v) => {
                                     const isRed = v.risk === 'RED';
-                                    const isOrange = v.risk === 'ORANGE';
+                                    // De-allarme per barche ormeggiate nei pontili
+                                    const isOrange = v.risk === 'ORANGE' && !(v.inCluster && !v.isMoving);
+                                    const isPortMoored = v.inCluster && !v.isMoving;
                                     const ship = getShipTypeInfo(v.type);
 
                                     return (
@@ -1405,6 +1540,8 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                                                     ? 'bg-red-500/15 border-red-500/40 text-red-100'
                                                     : isOrange
                                                     ? 'bg-orange-500/15 border-orange-500/40 text-orange-100'
+                                                    : isPortMoored
+                                                    ? 'bg-white/5 border-white/5 hover:bg-white/10 opacity-75'
                                                     : 'bg-white/5 border-white/5 hover:bg-white/10'
                                             }`}
                                         >
