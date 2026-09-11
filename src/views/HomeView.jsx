@@ -479,6 +479,8 @@ const HomeView = ({ manager, onTabChange }) => {
     const [showSSLModal, setShowSSLModal] = useState(false);
     const [isMapFull, setIsMapFull] = useState(false);
     const [isCopied, setIsCopied] = useState(false);
+    const [userOverrideMode, setUserOverrideMode] = useState(null); // 'leg' | 'season' | null
+    const [selectedSeasonYear, setSelectedSeasonYear] = useState(null); // Anno selezionato manualmente
 
     const lat = parseFloat(data?.gps?.lat) || 36.78;
     const lon = parseFloat(data?.gps?.lon) || 14.54;
@@ -589,6 +591,11 @@ const HomeView = ({ manager, onTabChange }) => {
         return segments;
     }, [data?.environment?.gps_history, data?.anchor?.engine_on, data?.anchor?.status, coords]);
 
+    // Protezione iniziale: se data è null durante il caricamento del socket, non tenta il rendering
+    if (!data) {
+        return null;
+    }
+
     return (
         <div className="px-2 pt-5 pb-4 landscape:p-2 landscape:pt-4 space-y-2 landscape:space-y-2">
 
@@ -677,19 +684,27 @@ const HomeView = ({ manager, onTabChange }) => {
                 {!isMapFull && (
                     <div className="w-full bg-[#121212]/90 backdrop-blur-xl border border-white/10 p-4 rounded-[2rem] shadow-2xl flex flex-col gap-2.5 text-white">
                         
-                        {/* RIGA 1: Stato dell'Ancoraggio (Intera Larghezza) */}
-                        <div className="flex items-center gap-2 w-full">
-                            <Anchor
-                                size={14}
-                                className={`${
-                                    data?.anchor?.status === 'LOCKED' ? 'text-cyan-400' :
-                                    (data?.anchor?.status === 'DRAGGING' || data?.anchor?.status === 'DRIFTING') ? 'text-red-500 animate-pulse' :
-                                    (data?.anchor?.status === 'LEARNING' || data?.anchor?.status === 'SETTLING') ? 'text-yellow-400 animate-spin-slow' : 'text-green-400'
-                                }`}
-                            />
-                            <span className="text-[11px] font-black uppercase tracking-widest text-white font-mono leading-none whitespace-nowrap">
-                                {data?.anchor?.description || "In Navigazione"}
-                            </span>
+                        {/* RIGA 1: Stato dell'Ancoraggio + Durata Sosta */}
+                        <div className="flex items-center justify-between gap-2 w-full">
+                            <div className="flex items-center gap-2 truncate">
+                                <Anchor
+                                    size={14}
+                                    className={`${
+                                        data?.anchor?.status === 'LOCKED' ? 'text-cyan-400' :
+                                        (data?.anchor?.status === 'DRAGGING' || data?.anchor?.status === 'DRIFTING') ? 'text-red-500 animate-pulse' :
+                                        (data?.anchor?.status === 'LEARNING' || data?.anchor?.status === 'SETTLING') ? 'text-yellow-400 animate-spin-slow' : 'text-green-400'
+                                    }`}
+                                />
+                                <span className="text-[11px] font-black uppercase tracking-widest text-white font-mono leading-none whitespace-nowrap truncate">
+                                    {data?.anchor?.description || "In Navigazione"}
+                                </span>
+                            </div>
+                            {/* Durata della sosta visibile in porto o all'ancora */}
+                            {data?.trip?.anchor_time && data.trip.anchor_time !== "0m" && (
+                                <span className="text-[10px] font-black font-mono text-cyan-400 bg-white/5 px-2 py-0.5 rounded-full border border-white/10 flex-shrink-0">
+                                    ⏱️ {data.trip.anchor_time}
+                                </span>
+                            )}
                         </div>
 
                         {/* RIGA 1B: Coordinate Nautiche con riga dedicata (visibile solo se all'ancora) */}
@@ -727,8 +742,8 @@ const HomeView = ({ manager, onTabChange }) => {
                             </div>
                         )}
 
-                        {/* RIGA 2: Griglia Dinamica (4 Colonne / 2x2 su mobile, 3 Colonne all'ancora) */}
-                        {data?.anchor?.status && (
+                        {/* RIGA 2: Griglia Dinamica (Nascosta se all'ormeggio in porto) */}
+                        {data?.anchor?.status && data?.anchor?.status !== 'IN_PORTO' && !(data?.anchor?.description && data?.anchor?.description?.includes("Porto")) && (
                             <div className={`grid ${
                                 data.anchor.status === 'MOVING' && (!data.anchor.radius || data.anchor.radius === 0)
                                     ? 'grid-cols-2 sm:grid-cols-4'
@@ -814,7 +829,8 @@ const HomeView = ({ manager, onTabChange }) => {
                             </div>
                         )}
 
-                        {/* RIGA 3: Informazioni Fondale, Catena, Stato/Nota (Etichette sopra, valori sotto, layout asimmetrico) */}
+                        {/* RIGA 3: Informazioni Fondale, Catena, Stato/Nota (Nascosta se all'ormeggio in porto) */}
+                        {data?.anchor?.status && data?.anchor?.status !== 'IN_PORTO' && !(data?.anchor?.description && data?.anchor?.description?.includes("Porto")) && (
                         <div className="flex justify-between items-start w-full font-mono border-t border-white/5 pt-2 mt-0.5">
                             {/* Gruppo Sinistro: Fondo e Catena compatti (~85px) */}
                             <div className="flex items-start gap-4 flex-shrink-0">
@@ -865,7 +881,7 @@ const HomeView = ({ manager, onTabChange }) => {
                                 </div>
                             </div>
                         </div>
-
+                        )}
                         </div>
                 )}
 
@@ -1092,64 +1108,188 @@ const HomeView = ({ manager, onTabChange }) => {
                     </MapContainer>
                 </div>
 
-                {/* CARD STATISTICHE VIAGGIO / TRATTA (Posizionata sempre sotto la mappa, sia in navigazione che all'ancora) */}
-                {!isMapFull && data?.trip?.total_nav_time && data.trip.total_nav_time !== "0m" && (() => {
+                {/* CARD STATISTICHE VIAGGIO / STAGIONE (Adattiva, switch tratta/stagione e ciclo anni interattivo) */}
+                {!isMapFull && (() => {
+                    const seasonsData = data?.trip?.seasons || {};
+                    const availableYears = Object.keys(seasonsData).map(Number).sort((a, b) => b - a);
+
+                    // 1. Calcolo anno di default (se anno corrente ha < 20 NM, usa anno precedente)
+                    const currentYear = new Date().getFullYear();
+                    let defaultYear = currentYear;
+                    if (!seasonsData[currentYear] || (seasonsData[currentYear].total_nm || 0) < 20.0) {
+                        const prevWithMiles = availableYears.find(y => y < currentYear && (seasonsData[y]?.total_nm || 0) >= 20.0);
+                        if (prevWithMiles) defaultYear = prevWithMiles;
+                    }
+
+                    const displayYear = selectedSeasonYear || defaultYear;
+                    const activeSeason = seasonsData[displayYear];
+
+                    // Funzione per ciclare gli anni al tocco (2026 -> 2025 -> 2024 -> ...)
+                    const handleCycleYear = (e) => {
+                        e.stopPropagation();
+                        if (availableYears.length <= 1) return;
+                        const curIdx = availableYears.indexOf(displayYear);
+                        const nextIdx = (curIdx + 1) % availableYears.length;
+                        setSelectedSeasonYear(availableYears[nextIdx]);
+                    };
+
+                    // 2. Regola default 3 giorni: se fermi da > 3 giorni (259200s), mostra di default la stagione
+                    const isLongStay = (data?.trip?.anchor_sec || 0) > 259200; // 3 Giorni
+                    const effectiveMode = userOverrideMode || (isLongStay && activeSeason ? 'season' : 'leg');
+                    const isSeasonView = effectiveMode === 'season' && !!activeSeason;
+
+                    // Metriche per vista tratta
                     const engineNmVal = parseFloat(data?.trip?.engine_nm) || 0;
                     const sailNmVal = parseFloat(data?.trip?.sail_nm) || 0;
                     const totalNmVal = engineNmVal + sailNmVal;
-                    const enginePct = totalNmVal > 0 ? Math.round((engineNmVal / totalNmVal) * 100) : 0;
-                    const sailPct = totalNmVal > 0 ? Math.round((sailNmVal / totalNmVal) * 100) : 0;
+                    const enginePct = totalNmVal > 0 ? Math.min(100, Math.round((engineNmVal / totalNmVal) * 100)) : 0;
+                    const sailPct = totalNmVal > 0 ? Math.min(100, Math.round((sailNmVal / totalNmVal) * 100)) : 0;
+
+                    // Metriche per vista stagione (protette da somme precise)
+                    const sSailNm = activeSeason?.sail_nm || 0;
+                    const sEngNm = activeSeason?.engine_nm || 0;
+                    const sTotNm = activeSeason?.total_nm || (sSailNm + sEngNm) || 0;
+                    const sSailPct = sTotNm > 0 ? Math.min(100, Math.round((sSailNm / sTotNm) * 100)) : 0;
+                    const sEngPct = sTotNm > 0 ? Math.min(100, Math.round((sEngNm / sTotNm) * 100)) : 0;
+
+                    const hasValidData = isSeasonView || (data?.trip?.total_nav_time && data.trip.total_nav_time !== "0m");
+                    if (!hasValidData && !activeSeason) return null;
 
                     return (
-                        <div className="w-full bg-[#121212]/90 backdrop-blur-xl border border-white/10 p-4 rounded-[2rem] shadow-2xl flex flex-col gap-2 font-mono text-white">
-                            <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest border-b border-white/5 pb-1.5">
-                                Statistiche Ultima Navigazione
-                            </span>
-
-                            {/* RIGA A: VELA */}
-                            <div className="grid grid-cols-[62px_48px_1fr_auto] items-center text-[10px] leading-none gap-1 py-0.5">
-                                <span className="flex items-center gap-1 text-cyan-400 font-bold truncate">
-                                    <span className="text-xs">⛵</span> Vela
-                                </span>
-                                <span className="text-white font-medium">{data.trip.sail_time || '0m'}</span>
-                                <span className="text-cyan-400 font-bold truncate">
-                                    {data.trip.sail_nm || '0.00 NM'} <span className="text-gray-300 font-bold text-[9.5px]">({sailPct}%)</span>
-                                </span>
-                                <span className="text-right font-mono text-[9.5px] text-gray-400 whitespace-nowrap">
-                                    <span className="text-cyan-300 font-bold">Ø {data?.trip?.sail_avg_kn || '--'}</span>
-                                    {data?.trip?.sail_max_kn && data.trip.sail_max_kn !== "--" && (
-                                        <span className="ml-1.5 text-gray-300 font-normal">
-                                            Max <strong className="text-cyan-300 font-bold">{data.trip.sail_max_kn}</strong>
+                        <div className="w-full bg-[#121212]/90 backdrop-blur-xl border border-white/10 p-4 rounded-[2rem] shadow-2xl flex flex-col gap-2 font-mono text-white transition-all">
+                            {/* INTESTAZIONE CLICCABILE PER SWITCH MANUALE E CICLO ANNI */}
+                            <div
+                                onClick={() => setUserOverrideMode(isSeasonView ? 'leg' : 'season')}
+                                className="flex justify-between items-center border-b border-white/5 pb-1.5 cursor-pointer select-none group"
+                                title="Tocca a sinistra per cambiare anno, tocca a destra per passare a Tratta/Stagione"
+                            >
+                                <div className="flex items-center gap-1.5 text-[9px] font-black text-gray-400 uppercase tracking-widest group-hover:text-white">
+                                    <span>{isSeasonView ? '🌍' : '⏱️'}</span>
+                                    {isSeasonView ? (
+                                        <span className="flex items-center gap-1">
+                                            Statistiche Stagione
+                                            <button
+                                                onClick={handleCycleYear}
+                                                className="bg-white/10 hover:bg-cyan-500/20 text-cyan-300 font-black px-1.5 py-0.5 rounded-md border border-white/10 ml-0.5 flex items-center gap-0.5 transition-colors"
+                                                title="Clicca per passare all'anno precedente"
+                                            >
+                                                {displayYear} <span className="text-[7px]">▾</span>
+                                            </button>
                                         </span>
+                                    ) : (
+                                        'Statistiche Ultima Navigazione'
                                     )}
+                                </div>
+                                <span className="text-[8px] font-black text-cyan-400 uppercase tracking-tighter bg-white/5 px-2 py-0.5 rounded-full border border-white/10">
+                                    {isSeasonView ? 'Mostra Tratta ➔' : `Stagione ${displayYear} ➔`}
                                 </span>
                             </div>
 
-                            {/* RIGA B: MOTORE */}
-                            <div className="grid grid-cols-[62px_48px_1fr_auto] items-center text-[10px] leading-none gap-1 py-0.5">
-                                <span className="flex items-center gap-1 text-yellow-400 font-bold truncate">
-                                    <span className="text-xs">🚤</span> Motore
-                                </span>
-                                <span className="text-white font-medium">{data.trip.engine_time || '0m'}</span>
-                                <span className="text-yellow-400 font-bold truncate">
-                                    {data.trip.engine_nm || '0.00 NM'} <span className="text-gray-300 font-bold text-[9.5px]">({enginePct}%)</span>
-                                </span>
-                                <span className="text-right font-mono text-[9.5px] text-gray-400 whitespace-nowrap">
-                                    <span className="text-yellow-300 font-bold">Ø {data?.trip?.engine_avg_kn || '--'}</span>
-                                </span>
-                            </div>
+                            {isSeasonView ? (
+                                /* VISTA A: RIEPILOGO STAGIONE */
+                                <>
+                                    {/* RIGA A: VELA STAGIONE */}
+                                    <div className="grid grid-cols-[62px_48px_1fr_auto] items-center text-[10px] leading-none gap-1 py-0.5">
+                                        <span className="flex items-center gap-1 text-cyan-400 font-bold truncate">
+                                            <span className="text-xs">⛵</span> Vela
+                                        </span>
+                                        <span className="text-white font-medium">{activeSeason.sail_hours?.toFixed(0) || 0}h</span>
+                                        <span className="text-cyan-400 font-bold truncate">
+                                            {activeSeason.sail_nm?.toFixed(1) || '0'} NM <span className="text-gray-300 font-bold text-[9.5px]">({sSailPct}%)</span>
+                                        </span>
+                                        <span className="text-right font-mono text-[9.5px] text-gray-400 whitespace-nowrap">
+                                            <span className="text-cyan-300 font-bold">Ø {activeSeason.sail_avg_speed || '--'} kn</span>
+                                        </span>
+                                    </div>
 
-                            {/* RIGA C: TOTALE TRATTA */}
-                            <div className="grid grid-cols-[62px_48px_1fr_auto] items-center text-[10px] leading-none gap-1 border-t border-white/5 pt-2 mt-1">
-                                <span className="flex items-center gap-1 text-gray-400 font-bold truncate">
-                                    <span className="text-xs">⏱️</span> Totale
+                                    {/* RIGA B: MOTORE STAGIONE */}
+                                    <div className="grid grid-cols-[62px_48px_1fr_auto] items-center text-[10px] leading-none gap-1 py-0.5">
+                                        <span className="flex items-center gap-1 text-yellow-400 font-bold truncate">
+                                            <span className="text-xs">🚤</span> Motore
+                                        </span>
+                                        <span className="text-white font-medium">{activeSeason.engine_hours?.toFixed(0) || 0}h</span>
+                                        <span className="text-yellow-400 font-bold truncate">
+                                            {activeSeason.engine_nm?.toFixed(1) || '0'} NM <span className="text-gray-300 font-bold text-[9.5px]">({sEngPct}%)</span>
+                                        </span>
+                                        <span className="text-right font-mono text-[9.5px] text-gray-400 whitespace-nowrap">
+                                            <span className="text-yellow-300 font-bold">Ø {activeSeason.engine_avg_speed || '--'} kn</span>
+                                        </span>
+                                    </div>
+
+                                    {/* RIGA C: TOTALE STAGIONE */}
+                                    <div className="grid grid-cols-[62px_48px_1fr_auto] items-center text-[10px] leading-none gap-1 border-t border-white/5 pt-2 mt-1">
+                                        <span className="flex items-center gap-1 text-gray-400 font-bold truncate">
+                                            <span className="text-xs">🌊</span> Totale
+                                        </span>
+                                        <span className="text-gray-200 font-medium">{(activeSeason.sail_hours + activeSeason.engine_hours).toFixed(0)}h</span>
+                                        <span className="text-white font-black truncate text-xs">
+                                            {sTotNm.toFixed(1)} NM
+                                        </span>
+                                        <span className="text-right font-mono text-[9.5px] text-gray-300 whitespace-nowrap">
+                                            <span className="text-green-400 font-bold">Ø {activeSeason.total_avg_speed || '--'} kn</span>
+                                            <span className="ml-1.5 text-gray-400 font-normal">({activeSeason.trips || 0} tappe)</span>
+                                        </span>
+                                    </div>
+                                </>
+                            ) : (
+                                /* VISTA B: ULTIMA NAVIGAZIONE */
+                                <>
+                                    {/* RIGA A: VELA */}
+                                    <div className="grid grid-cols-[62px_48px_1fr_auto] items-center text-[10px] leading-none gap-1 py-0.5">
+                                        <span className="flex items-center gap-1 text-cyan-400 font-bold truncate">
+                                            <span className="text-xs">⛵</span> Vela
+                                        </span>
+                                        <span className="text-white font-medium">{data?.trip?.sail_time || '0m'}</span>
+                                        <span className="text-cyan-400 font-bold truncate">
+                                            {data?.trip?.sail_nm || '0.00 NM'} <span className="text-gray-300 font-bold text-[9.5px]">({sailPct}%)</span>
+                                        </span>
+                                        <span className="text-right font-mono text-[9.5px] text-gray-400 whitespace-nowrap">
+                                            <span className="text-cyan-300 font-bold">Ø {data?.trip?.sail_avg_kn || '--'}</span>
+                                            {data?.trip?.sail_max_kn && data.trip.sail_max_kn !== "--" && (
+                                                <span className="ml-1.5 text-gray-300 font-normal">
+                                                    Max <strong className="text-cyan-300 font-bold">{data.trip.sail_max_kn}</strong>
+                                                </span>
+                                            )}
+                                        </span>
+                                    </div>
+
+                                    {/* RIGA B: MOTORE */}
+                                    <div className="grid grid-cols-[62px_48px_1fr_auto] items-center text-[10px] leading-none gap-1 py-0.5">
+                                        <span className="flex items-center gap-1 text-yellow-400 font-bold truncate">
+                                            <span className="text-xs">🚤</span> Motore
+                                        </span>
+                                        <span className="text-white font-medium">{data?.trip?.engine_time || '0m'}</span>
+                                        <span className="text-yellow-400 font-bold truncate">
+                                            {data?.trip?.engine_nm || '0.00 NM'} <span className="text-gray-300 font-bold text-[9.5px]">({enginePct}%)</span>
+                                        </span>
+                                        <span className="text-right font-mono text-[9.5px] text-gray-400 whitespace-nowrap">
+                                            <span className="text-yellow-300 font-bold">Ø {data?.trip?.engine_avg_kn || '--'}</span>
+                                        </span>
+                                    </div>
+
+                                    {/* RIGA C: TOTALE TRATTA */}
+                                    <div className="grid grid-cols-[62px_48px_1fr_auto] items-center text-[10px] leading-none gap-1 border-t border-white/5 pt-2 mt-1">
+                                        <span className="flex items-center gap-1 text-gray-400 font-bold truncate">
+                                            <span className="text-xs">⏱️</span> Totale
+                                        </span>
+                                        <span className="text-gray-200 font-medium">{data?.trip?.total_nav_time || '0m'}</span>
+                                        <span className="text-white font-black truncate">
+                                            {data?.trip?.total_nm || '0.00 NM'}
+                                        </span>
+                                        <span className="text-right font-mono text-[9.5px] text-gray-300 whitespace-nowrap">
+                                            <span className="text-white font-bold">Ø {data?.trip?.total_avg_kn || '--'}</span>
+                                        </span>
+                                    </div>
+                                </>
+                            )}
+
+                            {/* RIGA D: CONTAORE MOTORE TOTALE (Sempre presente nel footer) */}
+                            <div className="flex justify-between items-center text-[9.5px] border-t border-white/5 pt-2 mt-0.5 text-gray-400">
+                                <span className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-gray-300">
+                                    <span>⚙️</span> Contaore Motore
                                 </span>
-                                <span className="text-gray-200 font-medium">{data.trip.total_nav_time || '0m'}</span>
-                                <span className="text-white font-black truncate">
-                                    {data.trip.total_nm || '0.00 NM'}
-                                </span>
-                                <span className="text-right font-mono text-[9.5px] text-gray-300 whitespace-nowrap">
-                                    <span className="text-white font-bold">Ø {data?.trip?.total_avg_kn || '--'}</span>
+                                <span className="font-black font-mono text-yellow-400 text-[11px] tracking-tight">
+                                    {data?.trip?.tot_eng_h || '2310.40'} <span className="text-[9px] font-bold text-gray-300 ml-0.5">h</span>
                                 </span>
                             </div>
                         </div>
