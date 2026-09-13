@@ -32,6 +32,13 @@ const getWindColor = (knots) => {
     return 'text-red-500';
 };
 
+const getCardinalDirection = (deg) => {
+    if (deg == null || isNaN(deg)) return '';
+    const cardinals = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
+    const index = Math.round(((deg % 360 + 360) % 360) / 45) % 8;
+    return cardinals[index];
+};
+
 const getWeatherIcon = (hourData, size = 24) => {
     if (!hourData) return <Cloud size={size} className="text-gray-400" />;
     const prec = hourData.precipitation || 0;
@@ -150,7 +157,7 @@ const CompassCard = ({ title, windAngle, boatAngle, color, isTrue = false }) => 
             <div className="flex flex-col items-center landscape:items-end leading-none">
                 <span className="text-[10px] landscape:text-[7px] font-black text-gray-300 uppercase tracking-tighter font-mono whitespace-nowrap mb-1 landscape:mb-0">{title}</span>
                 <span className={`text-2xl landscape:text-lg font-black font-mono tracking-tighter ${color} whitespace-nowrap`}>
-                    {windAngle.toFixed(0)}° {isTrue ? 'N' : ''}
+                    {windAngle.toFixed(0)}° {isTrue ? getCardinalDirection(windAngle) : ''}
                 </span>
             </div>
         </div>
