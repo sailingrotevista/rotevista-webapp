@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Node-RED JSON Optimizer for LLMs</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --accent-color: #8b5cf6;
+            --accent-hover: #7c3aed;
+            --text-color: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-color: #334155;
+            --success-color: #10b981;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        header h1 {
+            font-size: 1.8rem;
+            color: #f1f5f9;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        header p {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+        }
+
+        .controls-bar {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px 20px;
+            margin-bottom: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 15px;
+        }
+
+        .options {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .option-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.88rem;
+            cursor: pointer;
+            user-select: none;
+            color: #cbd5e1;
+        }
+
+        .option-label input[type="checkbox"] {
+            accent-color: var(--accent-color);
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .btn {
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            padding: 8px 18px;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.9rem;
+        }
+
+        .btn:hover {
+            background-color: var(--accent-hover);
+        }
+
+        .btn-success {
+            background-color: #059669;
+        }
+        .btn-success:hover {
+            background-color: #047857;
+        }
+
+        .btn-secondary {
+            background-color: #475569;
+        }
+        .btn-secondary:hover {
+            background-color: #334155;
+        }
+
+        .editor-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            flex: 1;
+            min-height: 500px;
+        }
+
+        @media (max-width: 900px) {
+            .editor-container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .panel {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            background: #0f172a;
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .panel-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #e2e8f0;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stats-badge {
+            font-size: 0.8rem;
+            background: #334155;
+            padding: 3px 8px;
+            border-radius: 4px;
+            color: #94a3b8;
+        }
+
+        .stats-badge strong {
+            color: #38bdf8;
+        }
+
+        textarea {
+            width: 100%;
+            height: 100%;
+            flex: 1;
+            background: transparent;
+            border: none;
+            padding: 15px;
+            color: #e2e8f0;
+            font-family: "Courier New", Courier, monospace;
+            font-size: 0.85rem;
+            line-height: 1.4;
+            resize: none;
+            outline: none;
+        }
+
+        textarea::placeholder {
+            color: #64748b;
+        }
+
+        .reduction-banner {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: #34d399;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            margin-top: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>⚡ Node-RED JSON Optimizer for LLMs</h1>
+        <p>Rimuovi i metadati visivi (coordinate x/y/z, stili, icone) e riduci i token fino al 50% prima di incollarli in AI Studio.</p>
+    </header>
+
+    <div class="controls-bar">
+        <div class="options">
+            <label class="option-label" title="Rimuove x, y, z dai nodi">
+                <input type="checkbox" id="opt-xyz" checked> Coordinate (x, y, z)
+            </label>
+            <label class="option-label" title="Rimuove icon, color, labelStyle, ecc.">
+                <input type="checkbox" id="opt-style" checked> Stili & Icone
+            </label>
+            <label class="option-label" title="Rimuove l'array wires se vuoto o assente">
+                <input type="checkbox" id="opt-wires" checked> Wires vuoti
+            </label>
+            <label class="option-label" title="Rimuove campi non essenziali come d (disabled) se false">
+                <input type="checkbox" id="opt-defaults" checked> Valori di default inutili
+            </label>
+            <label class="option-label" title="Formatta il JSON compatto su una sola riga o leggibile">
+                <input type="checkbox" id="opt-pretty"> Formattazione Pretty (rientrata)
+            </label>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button class="btn btn-secondary" onclick="clearAll()">Svuota</button>
+            <button class="btn" onclick="processJSON()">Ottimizza ora</button>
+        </div>
+    </div>
+
+    <div class="editor-container">
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-title">1. JSON Esportato da Node-RED</span>
+                <span class="stats-badge" id="input-stats">Dimensione: <strong>0 KB</strong> | Token est: <strong>0</strong></span>
+            </div>
+            <textarea id="input-json" placeholder="Incolla qui l'export JSON del tuo flusso o dei 15 flussi completi..." oninput="autoProcess()"></textarea>
+        </div>
+
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-title">2. JSON Ripulito (Pronto per AI Studio)</span>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span class="stats-badge" id="output-stats">Dimensione: <strong>0 KB</strong> | Token est: <strong>0</strong></span>
+                    <button class="btn btn-success" onclick="copyOutput()" id="copy-btn">📋 Copia</button>
+                </div>
+            </div>
+            <textarea id="output-json" readonly placeholder="Il risultato ottimizzato apparirà qui..."></textarea>
+        </div>
+    </div>
+
+    <div class="reduction-banner" id="reduction-banner" style="display: none;">
+        <span id="reduction-text">Risparmio stimato: 0% di token in meno!</span>
+        <span style="font-size: 0.8rem; color: #94a3b8;">Pronto da incollare direttamente su Google AI Studio</span>
+    </div>
+
+    <script>
+        function estimateTokens(str) {
+            if (!str) return 0;
+            return Math.ceil(str.length / 3.8);
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 KB';
+            return (bytes / 1024).toFixed(1) + ' KB';
+        }
+
+        function cleanNodeREDJSON(jsonObj) {
+            const isArray = Array.isArray(jsonObj);
+            const nodes = isArray ? jsonObj : [jsonObj];
+
+            const cleaned = nodes.map(node => {
+                if (typeof node !== 'object' || node === null) return node;
+
+                const n = { ...node };
+
+                // 1. RIMUOVI COORDINATE GRAFICHE (x, y, z, l)
+                delete n.x;
+                delete n.y;
+                delete n.z;
+                delete n.l;
+
+                // 2. RIMUOVI STILI VISIVI
+                delete n.icon;
+                delete n.color;
+                delete n.labelStyle;
+                delete n.align;
+                delete n.buttonColor;
+
+                // 3. RIMUOVI TESTI DI DOCUMENTAZIONE LUNGHI (info)
+                delete n.info;
+
+                // 4. RIMUOVI STRUTTURE VUOTE O DI DEFAULT
+                if (Array.isArray(n.env) && n.env.length === 0) delete n.env;
+                if (n.disabled === false) delete n.disabled;
+                if (n.d === false) delete n.d;
+                if (n.initialize === "") delete n.initialize;
+                if (n.finalize === "") delete n.finalize;
+                if (n.libs && Array.isArray(n.libs) && n.libs.length === 0) delete n.libs;
+                if (n.timeout === "") delete n.timeout;
+                if (n.noerr === 0) delete n.noerr;
+                if (n.repeat === "") delete n.repeat;
+                if (n.crontab === "") delete n.crontab;
+                if (n.once === false) delete n.once;
+
+                // Mantieni MANTENUTI: id, type, label, name, func, topic, wires, z
+                return n;
+            });
+
+            return isArray ? cleaned : cleaned[0];
+        }
+
+        function processJSON() {
+            const inputArea = document.getElementById('input-json');
+            const outputArea = document.getElementById('output-json');
+            const rawInput = inputArea.value.trim();
+
+            if (!rawInput) {
+                outputArea.value = '';
+                updateStats('', '');
+                return;
+            }
+
+            try {
+                const parsed = JSON.parse(rawInput);
+                const cleaned = cleanNodeREDJSON(parsed);
+                
+                const isPretty = document.getElementById('opt-pretty').checked;
+                const resultStr = JSON.stringify(cleaned, null, isPretty ? 2 : undefined);
+
+                outputArea.value = resultStr;
+                updateStats(rawInput, resultStr);
+            } catch (err) {
+                outputArea.value = "❌ Errore nel parsing del JSON:\n" + err.message;
+                document.getElementById('reduction-banner').style.display = 'none';
+            }
+        }
+
+        function autoProcess() {
+            processJSON();
+        }
+
+        document.querySelectorAll('.options input').forEach(input => {
+            input.addEventListener('change', processJSON);
+        });
+
+        function updateStats(inStr, outStr) {
+            const inBytes = new Blob([inStr]).size;
+            const outBytes = new Blob([outStr]).size;
+            const inTokens = estimateTokens(inStr);
+            const outTokens = estimateTokens(outStr);
+
+            document.getElementById('input-stats').innerHTML =
+                `Dimensione: <strong>${formatBytes(inBytes)}</strong> | Token est: <strong>${inTokens.toLocaleString()}</strong>`;
+            
+            document.getElementById('output-stats').innerHTML =
+                `Dimensione: <strong>${formatBytes(outBytes)}</strong> | Token est: <strong>${outTokens.toLocaleString()}</strong>`;
+
+            const banner = document.getElementById('reduction-banner');
+            if (inBytes > 0 && outBytes > 0 && inBytes > outBytes) {
+                const percent = (((inBytes - outBytes) / inBytes) * 100).toFixed(1);
+                const tokenSaved = (inTokens - outTokens).toLocaleString();
+                document.getElementById('reduction-text').innerHTML =
+                    `🔥 <strong>Riduzione del ${percent}%!</strong> Risparmiati circa <strong>${tokenSaved} token</strong>.`;
+                banner.style.display = 'flex';
+            } else {
+                banner.style.display = 'none';
+            }
+        }
+
+        function copyOutput() {
+            const outputArea = document.getElementById('output-json');
+            if (!outputArea.value) return;
+
+            navigator.clipboard.writeText(outputArea.value).then(() => {
+                const btn = document.getElementById('copy-btn');
+                const origText = btn.innerHTML;
+                btn.innerHTML = '✅ Copiato!';
+                btn.style.backgroundColor = '#10b981';
+                setTimeout(() => {
+                    btn.innerHTML = origText;
+                    btn.style.backgroundColor = '';
+                }, 2000);
+            });
+        }
+
+        function clearAll() {
+            document.getElementById('input-json').value = '';
+            document.getElementById('output-json').value = '';
+            updateStats('', '');
+        }
+    </script>
+</body>
+</html>
