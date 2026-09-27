@@ -266,8 +266,8 @@ const threatVesselLabelIcon = (vessel) => {
     const ship = getShipTypeInfo(vessel.type);
 
     const isMoving = vessel.isMoving !== undefined ? vessel.isMoving : (!vessel.isAnchored && vessel.sog >= 0.3);
-    // Riga 2 pulita senza duplicazioni di distanza
-    const speedLine = isMoving ? `${vessel.sog} kn • ${vessel.cog}°` : 'ALL\'ANCORA';
+    // Riga 2: distingue tra unità in porto, all'ancora o in moto
+    const speedLine = isMoving ? `${vessel.sog} kn • ${vessel.cog}°` : (vessel.inCluster ? 'IN PORTO' : 'ALL\'ANCORA');
 
     let alertLine = '';
     if (isRed) {
@@ -626,54 +626,11 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
         return liveMatch || selectedTarget;
     }, [selectedTarget, sortedTargets, ownShipTarget]);
 
-    // Raggruppamento e calcolo perimetri poligonali (Convex Hull con buffer) dei cluster portuali
+    // Visualizzazione diretta dei perimetri portuali calcolati e consolidati dal Cerbo GX (Zero logica nel frontend)
     const harborClusters = useMemo(() => {
-        const raw = data?.environment?.ais_targets || [];
-        const clustered = raw.filter(v => v.inCluster);
-        if (clustered.length < 3) return [];
-
-        // Raggruppa per clusterId se presente dal backend, altrimenti cluster unico
-        const groups = {};
-        clustered.forEach(v => {
-            const cId = v.clusterId || 'default_port';
-            if (!groups[cId]) groups[cId] = [];
-            groups[cId].push(v);
-        });
-
-        const result = [];
-        Object.keys(groups).forEach(cId => {
-            const vessels = groups[cId];
-            if (vessels.length < 3) return;
-
-            let sumLat = 0, sumLon = 0;
-            const paddedPoints = [];
-
-            // Genera 4 punti perimetrali con buffer di 18m attorno a ogni scafo per avvolgere i pontili
-            vessels.forEach(v => {
-                sumLat += v.lat;
-                sumLon += v.lon;
-                const cosLat = Math.cos(v.lat * Math.PI / 180) || 1;
-                const dLat = 18 / 111139;
-                const dLon = 18 / (111139 * cosLat);
-                paddedPoints.push([v.lat + dLat, v.lon]);
-                paddedPoints.push([v.lat - dLat, v.lon]);
-                paddedPoints.push([v.lat, v.lon + dLon]);
-                paddedPoints.push([v.lat, v.lon - dLon]);
-            });
-
-            const hull = computeConvexHull(paddedPoints);
-            const center = [sumLat / vessels.length, sumLon / vessels.length];
-
-            result.push({
-                id: cId,
-                center,
-                hull,
-                count: vessels.length
-            });
-        });
-
-        return result;
-    }, [data?.environment?.ais_targets]);
+        const backendClusters = data?.environment?.harbor_clusters || [];
+        return backendClusters.filter(cl => cl && cl.hull && cl.hull.length >= 3);
+    }, [data?.environment?.harbor_clusters]);
 
     /** Centro degli anelli: Bersaglio AIS selezionato (live) oppure la propria Barca */
     const rangeRingsCenter = useMemo(() => {
@@ -1444,7 +1401,7 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                                                 <div className="bg-white/5 p-2 rounded-xl border border-white/5 flex flex-col justify-center">
                                                     <span className="text-[7.5px] text-gray-400 uppercase block tracking-wider">Stato AIS (Classe)</span>
                                                     <span className="font-bold text-white text-[11px] mt-0.5 truncate block">
-                                                        {activeTarget.isAnchored ? 'All\'Ancora' : (activeTarget.sog >= 0.5 ? 'In Navigazione' : 'Alla Deriva')}
+                                                        {activeTarget.inCluster ? 'In Porto' : (activeTarget.isAnchored ? 'All\'Ancora' : (activeTarget.sog >= 0.5 ? 'In Navigazione' : 'Alla Deriva'))}
                                                         <span className="text-gray-400 font-normal ml-1">({activeTarget.aisClass || 'B'})</span>
                                                     </span>
                                                 </div>
@@ -1510,7 +1467,7 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                                             ⛵ ROTEVISTA (LA TUA BARCA)
                                         </span>
                                         <span className="text-[8px] text-gray-300 mt-0.5">
-                                            {data?.anchor?.status !== 'MOVING' ? 'ALL\'ANCORA' : (data?.anchor?.engine_on ? 'A MOTORE' : 'A VELA')} • HDG: {Math.round(heading)}°
+                                            {data?.anchor?.status === 'IN_PORTO' || data?.anchor?.mode === 'IN_PORTO' ? 'IN PORTO' : (data?.anchor?.status !== 'MOVING' ? 'ALL\'ANCORA' : (data?.anchor?.engine_on ? 'A MOTORE' : 'A VELA'))} • HDG: {Math.round(heading)}°
                                         </span>
                                     </div>
                                     <div className="flex flex-col items-end text-right shrink-0 leading-none">
@@ -1556,7 +1513,7 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                                                     {isRed && <span className="text-red-500 text-[9px] shrink-0">🚨</span>}
                                                 </div>
                                                 <span className="text-[9.5px] font-bold text-gray-300 mt-0.5 tracking-tight leading-tight">
-                                                    {ship.label} • {v.isMoving ? `${v.sog}k • ${v.cog}°` : 'ALL\'ANCORA'}
+                                                    {ship.label} • {v.inCluster && !v.isMoving ? 'IN PORTO' : (v.isMoving ? `${v.sog}k • ${v.cog}°` : 'ALL\'ANCORA')}
                                                 </span>
                                             </div>
 
