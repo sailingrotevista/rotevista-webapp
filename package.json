@@ -1,7 +1,7 @@
 {
   "name": "@sailingrotevista/rotevista-webapp",
   "private": false,
-  "version": "2.2.5",
+  "version": "2.2.6",
   "type": "module",
   "description": "Master Marine Dashboard for Rotevista - Monitoring Power, Solar, Environment and Navigation.",
   "author": "Alessio Tosi",
@@ -21,15 +21,15 @@
     "displayName": "Rotevista Master Dash"
   },
   "publishConfig": {
-      "access": "public",
-      "tag": "latest"
-    },
-    "scripts": {
-      "dev": "vite",
-      "build": "vite build",
-      "preview": "vite preview",
-      "release": "npm version patch && npm run build && git push && git push --tags && npm publish"
-    },
+    "access": "public",
+    "tag": "latest"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "release": "npm version patch && npm run build && git push && git push --tags && npm publish"
+  },
   "dependencies": {
     "framer-motion": "^11.0.0",
     "leaflet": "^1.9.4",
