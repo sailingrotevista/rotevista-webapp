@@ -1,5 +1,5 @@
 /* --- File: src/App.jsx --- */
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Home, Radar, Zap, Wind, SlidersHorizontal, Moon, Sun, Loader2 } from 'lucide-react';
 import { useBoatData } from './hooks/useBoatData';
@@ -20,6 +20,8 @@ function App() {
   });
 
   const [direction, setDirection] = useState(0);
+
+const scrollContainerRef = useRef(null);
   // Ripristina la modalità Notte salvata per non abbagliare al refresh
   const [isNightMode, setIsNightMode] = useState(() => {
     return localStorage.getItem('rotevista_night_mode') === 'true';
@@ -32,7 +34,7 @@ function App() {
   });
   const manager = useBoatData();
 
-  // Rileva se l'app è stata aperta da un link Telegram con parametro ?mmsi=...
+// Rileva se l'app è stata aperta da un link Telegram con parametro ?mmsi=...
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const mmsi = params.get('mmsi');
@@ -53,11 +55,24 @@ function App() {
 
   // Cambio scheda con salvataggio persistente in memoria locale
   const changeTab = (newTab) => {
-    if (newTab === selectedTab) return;
-    setDirection(newTab > selectedTab ? 1 : -1);
-    setSelectedTab(newTab);
-    localStorage.setItem('rotevista_active_tab', String(newTab));
-  };
+  if (newTab === selectedTab) return;
+
+  // Salva la posizione verticale del tab che stiamo lasciando
+  if (scrollContainerRef.current) {
+    localStorage.setItem(
+      `rotevista_scroll_tab_${selectedTab}`,
+      String(scrollContainerRef.current.scrollTop)
+    );
+  }
+
+  setDirection(newTab > selectedTab ? 1 : -1);
+  setSelectedTab(newTab);
+
+  localStorage.setItem(
+    'rotevista_active_tab',
+    String(newTab)
+  );
+};
 
   const onDragEnd = (event, info) => {
     if (event.target.closest('.leaflet-container')) return;
@@ -118,8 +133,27 @@ function App() {
       <main className="flex-1 relative mt-16 landscape:mt-14 h-[calc(100%-4rem)] landscape:h-[calc(100%-3.5rem)] w-full">
         <AnimatePresence initial={false} custom={direction}>
           <motion.div
-            key={selectedTab}
-            custom={direction}
+  ref={(node) => {
+    if (!node) return;
+
+    scrollContainerRef.current = node;
+
+    const savedScroll = localStorage.getItem(
+      `rotevista_scroll_tab_${selectedTab}`
+    );
+
+    const scrollTop = savedScroll !== null
+      ? Number(savedScroll)
+      : 0;
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        node.scrollTop = scrollTop;
+      });
+    });
+  }}
+  key={selectedTab}
+  custom={direction}
             variants={variants}
             initial="enter"
             animate="center"
