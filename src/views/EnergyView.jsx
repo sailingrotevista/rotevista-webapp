@@ -216,11 +216,16 @@ const EnergyView = ({ manager }) => {
 
   const weeklyData = data.power.soc_history_7d_minmax;
 
-const pruaValuesWeek = weeklyData
+// La scala colore deve usare solo i giorni completi.
+// "Oggi" viene escluso per evitare che al mattino diventi
+// artificialmente la baseline minima della settimana.
+const completedSolarDays = weeklyData.filter(d => d.day !== 'Oggi');
+
+const pruaValuesWeek = completedSolarDays
   .map(d => Number(d.solar_prua) || 0)
   .filter(v => v > 0);
 
-const poppaValuesWeek = weeklyData
+const poppaValuesWeek = completedSolarDays
   .map(d => Number(d.solar_poppa) || 0)
   .filter(v => v > 0);
 
