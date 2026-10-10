@@ -331,36 +331,77 @@ const AisMapController = ({
     flyTarget,
     isTargetSelected,
     cameraSnapshotRef,
+    cameraLiveRef,
     restoreSignal,
     onZoomChange,
     onBoundsChange
-}) => {
-    const map = useMap();
-    const isManualZoomOverrideRef = useRef(false);
-    const isProgrammaticMoveRef = useRef(false); // Flag anti-conflitto per distinguere i gesti dita dai voli automatici
-    const isFirstLoadRef = useRef(true);
+        }) => {
+            const map = useMap();
+            const isManualZoomOverrideRef = useRef(false);
+            const isProgrammaticMoveRef = useRef(false);
+            const isManualGestureZoomRef = useRef(false);
+            const isFirstLoadRef = useRef(true);
 
-    // Aggiorna confini visibili e livello di zoom per ottimizzazione GPU
-    const updateViewport = useCallback(() => {
-        if (onZoomChange) onZoomChange(map.getZoom());
-        if (onBoundsChange) onBoundsChange(map.getBounds().pad(0.15)); // +15% di margine per scorrimento fluido
-    }, [map, onZoomChange, onBoundsChange]);
+            // Aggiorna confini visibili e livello di zoom per ottimizzazione GPU
+            const updateViewport = useCallback(() => {
+            const center = map.getCenter();
+            const zoom = map.getZoom();
+
+            if (cameraLiveRef) {
+                cameraLiveRef.current = {
+                    center: [center.lat, center.lng],
+                    zoom: zoom
+                };
+            }
+
+            if (onZoomChange) onZoomChange(zoom);
+            if (onBoundsChange) onBoundsChange(map.getBounds().pad(0.15));
+        }, [map, cameraLiveRef, onZoomChange, onBoundsChange]);
 
     useMapEvents({
-        dragstart: () => {
-            // Si disattiva SOLO quando l'utente trascina fisicamente la mappa col dito
-            map.stop();
-            setAutoCenter(false);
-        },
-        zoomstart: (e) => {
-            // Riconosce il pinch-to-zoom SOLO se originato da un gesto touch/mouse reale
-            if (e && e.originalEvent) {
-                isManualZoomOverrideRef.current = true;
+    dragstart: () => {
+        map.stop();
+        setAutoCenter(false);
+    },
+
+    zoomstart: () => {
+        if (!isProgrammaticMoveRef.current) {
+            isManualZoomOverrideRef.current = true;
+            isManualGestureZoomRef.current = true;
+        }
+    },
+
+    zoomend: () => {
+
+        if (isManualGestureZoomRef.current) {
+            const boatPoint = map.latLngToContainerPoint(centerCoords);
+            const screenCenter = map.getSize().divideBy(2);
+
+            const offsetPx = boatPoint.distanceTo(screenCenter);
+
+            if (offsetPx > 12) {
+                setAutoCenter(false);
             }
-        },
-        zoomend: updateViewport,
-        moveend: updateViewport
-    });
+
+            isManualGestureZoomRef.current = false;
+        }
+
+        isProgrammaticMoveRef.current = false;
+
+        // Forza Leaflet a riallineare viewport e tile dopo il pinch.
+        // Utile soprattutto su Safari/iOS quando un tile resta scalato.
+        requestAnimationFrame(() => {
+            map.invalidateSize({ pan: false });
+        });
+
+        updateViewport();
+    },
+
+    moveend: () => {
+        isProgrammaticMoveRef.current = false;
+        updateViewport();
+    }
+});
 
     useEffect(() => {
         updateViewport();
@@ -386,6 +427,7 @@ const AisMapController = ({
 
         // 2. Se lo Smart Zoom è cambiato di livello, esegui lo zoom morbido
         if (!isManualZoomOverrideRef.current && currentZoom !== smartZoom) {
+            isProgrammaticMoveRef.current = true;
             map.flyTo(centerCoords, smartZoom, { duration: 0.8 });
             lastCenteredPosRef.current = centerCoords;
             return;
@@ -414,8 +456,14 @@ const AisMapController = ({
     useEffect(() => {
         if (flyTarget && flyTarget.lat && flyTarget.lon) {
             const targetZ = Math.max(map.getZoom(), 15);
-            // Centratura nativa Leaflet priva di errori di proiezione all'avvio
-            map.flyTo([parseFloat(flyTarget.lat), parseFloat(flyTarget.lon)], targetZ, { duration: 0.8 });
+
+            isProgrammaticMoveRef.current = true;
+
+            map.flyTo(
+                [parseFloat(flyTarget.lat), parseFloat(flyTarget.lon)],
+                targetZ,
+                { duration: 0.8 }
+            );
         }
     }, [flyTarget, map]);
 
@@ -423,9 +471,13 @@ const AisMapController = ({
     useEffect(() => {
         if (restoreSignal && cameraSnapshotRef.current) {
             const snap = cameraSnapshotRef.current;
+
+            isProgrammaticMoveRef.current = true;
+
             map.flyTo(snap.center, snap.zoom, { duration: 0.7 });
+
             setAutoCenter(snap.autoCenter);
-            cameraSnapshotRef.current = null; // Reset memoria post-ripristino
+            cameraSnapshotRef.current = null;
         }
     }, [restoreSignal, cameraSnapshotRef, map, setAutoCenter]);
 
@@ -513,6 +565,15 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
             }));
         }
     }, [data?.gps?.lat, data?.gps?.lon]);
+    useEffect(() => {
+            if (isListOpen && !selectedTarget && listScrollRef.current) {
+                requestAnimationFrame(() => {
+                    if (listScrollRef.current) {
+                        listScrollRef.current.scrollTop = listScrollTopRef.current;
+                    }
+                });
+            }
+    }, [isListOpen, selectedTarget]);
 
     /** Funzione universale di copia sicura anti-scroll per iOS Safari */
     const copyToClipboardSafe = (text, onSuccess) => {
@@ -567,6 +628,9 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
 
     // Memoria sincrona dello stato della mappa precedente all'ispezione
     const cameraSnapshotRef = useRef(null);
+    const cameraLiveRef = useRef(null);
+    const listScrollRef = useRef(null);
+    const listScrollTopRef = useRef(0);
     const hasHandledDeepLinkRef = useRef(false);
     const [restoreSignal, setRestoreSignal] = useState(0);
     const [flyTarget, setFlyTarget] = useState(null); // Bersaglio da inquadrare con animazione
@@ -687,13 +751,18 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
 
     /** 1. Selezione da LISTA: preserva la vista corrente (Tattica o Registro) durante l'esplorazione */
     const handleSelectFromList = (vessel) => {
+        if (listScrollRef.current) {
+            listScrollTopRef.current = listScrollRef.current.scrollTop;
+        }
+
         if (!cameraSnapshotRef.current) {
             cameraSnapshotRef.current = {
-                center: ownCoords,
-                zoom: 14,
+                center: cameraLiveRef.current?.center || ownCoords,
+                zoom: cameraLiveRef.current?.zoom ?? currentZoom,
                 autoCenter: autoCenter
             };
         }
+
         setSelectedTarget(vessel);
         setFlyTarget(vessel);
         setAutoCenter(false);
@@ -828,6 +897,7 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                         flyTarget={flyTarget}
                         isTargetSelected={!!selectedTarget}
                         cameraSnapshotRef={cameraSnapshotRef}
+                        cameraLiveRef={cameraLiveRef}
                         restoreSignal={restoreSignal}
                         onZoomChange={setCurrentZoom}
                         onBoundsChange={setMapBounds}
@@ -1456,7 +1526,10 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                             </div>
 
                             {/* Righe Bersagli con Riga Fissa Barca Propria in Cima */}
-                            <div className="flex-1 overflow-y-auto p-1.5 space-y-1.5">
+                            <div
+                                ref={listScrollRef}
+                                className="flex-1 overflow-y-auto p-1.5 space-y-1.5"
+                            >
                                 {/* Riga Fissata: Barca Propria (ROTEVISTA) */}
                                 <div
                                     onClick={() => handleSelectFromList(ownShipTarget)}
