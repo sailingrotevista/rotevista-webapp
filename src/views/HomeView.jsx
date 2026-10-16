@@ -713,13 +713,21 @@ const HomeView = ({ manager, onTabChange }) => {
                                 <div
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        if (!data?.anchor?.status) return;
-                                        
+                                        const anchorLat = data.anchor.lat || data?.gps?.lat || lat;
+                                        const anchorLon = data.anchor.lon || data?.gps?.lon || lon;
+                                        const formattedCoords = `${formatNautic(anchorLat, true)} ${formatNautic(anchorLon, false)}`;
+
                                         const isArmed = (data.anchor.status === 'LOCKED' || data.anchor.status === 'DRAGGING' || data.anchor.status === 'DRIFTING' || data.anchor.status === 'LEARNING');
-                                        
-                                        const textToCopy = isArmed
-                                            ? `⛵ ROTEVISTA: [${data.anchor.description || data.anchor.status}] | D: ${data.anchor.boat_dist?.toFixed(1) || '0.0'}m | ${formatNautic(data.anchor.lat, true)} ${formatNautic(data.anchor.lon, false)} | R: ${data.anchor.radius?.toFixed(0) || '0'}m | Prec: ±${data.anchor.std_dev?.toFixed(1) || '0.0'}m | Fondale: ${data.anchor.depth?.toFixed(1) || '0.0'}m | Catena: ${data.anchor.chain?.toFixed(0) || '0'}m | Volvo: ${data.anchor.engine_on ? 'ON' : 'OFF'} (${data.anchor.engine_v?.toFixed(1) || '0.0'}V)${data.anchor.score > 0 ? ` [Score: ${data.anchor.score}/70]` : ''}`
-                                            : `⛵ ROTEVISTA: ${data.anchor.description || data.anchor.status}`;
+                                        const isInPorto = data.anchor.status === 'IN_PORTO' || (data.anchor.description && data.anchor.description.includes("Porto"));
+
+                                        let textToCopy;
+                                        if (isArmed) {
+                                            textToCopy = `⛵ ROTEVISTA: [${data.anchor.description || data.anchor.status}] | D: ${data.anchor.boat_dist?.toFixed(1) || '0.0'}m | ${formattedCoords} | R: ${data.anchor.radius?.toFixed(0) || '0'}m | Prec: ±${data.anchor.std_dev?.toFixed(1) || '0.0'}m | Fondale: ${data.anchor.depth?.toFixed(1) || '0.0'}m | Catena: ${data.anchor.chain?.toFixed(0) || '0'}m | Volvo: ${data.anchor.engine_on ? 'ON' : 'OFF'} (${data.anchor.engine_v?.toFixed(1) || '0.0'}V)${data.anchor.score > 0 ? ` [Score: ${data.anchor.score}/70]` : ''}`;
+                                        } else if (isInPorto) {
+                                            textToCopy = `⛵ ROTEVISTA: [${data.anchor.description || 'Ormeggio in Porto'}] | ${formattedCoords}${data?.trip?.anchor_time && data.trip.anchor_time !== '0m' ? ` | Sosta: ${data.trip.anchor_time}` : ''}${data?.power?.soc ? ` | Batteria: ${data.power.soc.toFixed(1)}%` : ''}${data?.power?.shore_power ? ` | Banchina: ON (${data?.power?.shore_v?.toFixed(0) || 230}V)` : ''}`;
+                                        } else {
+                                            textToCopy = `⛵ ROTEVISTA: [${data.anchor.description || data.anchor.status || 'Posizione'}] | ${formattedCoords}`;
+                                        }
                                         
                                         copyToClipboardSafe(textToCopy, () => {
                                             setIsCopied(true);
@@ -999,6 +1007,7 @@ const HomeView = ({ manager, onTabChange }) => {
 
                         {/* BERSAGLI AIS FILTRATI (Solo vicini < 1 NM per massima fluidità in rada) */}
                         {homeAisTargets.map((v) => {
+                            if (v.lat == null || v.lon == null || isNaN(v.lat) || isNaN(v.lon)) return null;
                             const isMoving = v.isMoving !== undefined ? v.isMoving : (!v.isAnchored && v.sog >= 0.3);
                             const vesselColor = getVesselStatusColor(v);
                             const hasAlert = (v.risk === "RED" || v.risk === "ORANGE");

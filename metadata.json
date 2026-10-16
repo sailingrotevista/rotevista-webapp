@@ -1,0 +1,8 @@
+{
+  "name": "Rotevista Marine Dashboard",
+  "description": "Master Marine Dashboard for Rotevista - Monitoring Power, Solar, Environment and Navigation.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

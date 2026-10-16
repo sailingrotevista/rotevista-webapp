@@ -373,14 +373,18 @@ const AisMapController = ({
 
     zoomend: () => {
 
-        if (isManualGestureZoomRef.current) {
-            const boatPoint = map.latLngToContainerPoint(centerCoords);
-            const screenCenter = map.getSize().divideBy(2);
+        if (isManualGestureZoomRef.current && centerCoords && centerCoords[0] != null && centerCoords[1] != null) {
+            try {
+                const boatPoint = map.latLngToContainerPoint(centerCoords);
+                const screenCenter = map.getSize().divideBy(2);
 
-            const offsetPx = boatPoint.distanceTo(screenCenter);
+                const offsetPx = boatPoint.distanceTo(screenCenter);
 
-            if (offsetPx > 12) {
-                setAutoCenter(false);
+                if (offsetPx > 12) {
+                    setAutoCenter(false);
+                }
+            } catch (err) {
+                console.warn("Could not calculate boat point:", err);
             }
 
             isManualGestureZoomRef.current = false;
@@ -853,26 +857,40 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
                     />
 
                     {/* PERIMETRI POLIGONALI DEI PORTI / MARINE (CONVEX HULL CON BUFFER PONTILI) */}
-                    {harborClusters.map((cluster) => (
-                        <React.Fragment key={`harbor-hull-${cluster.id}`}>
-                            <Polygon
-                                positions={cluster.hull}
-                                pathOptions={{
-                                    color: '#38bdf8',
-                                    weight: 1.2,
-                                    dashArray: '5, 6',
-                                    fillColor: '#0284c7',
-                                    fillOpacity: isNightMode ? 0.12 : 0.08,
-                                    interactive: false
-                                }}
-                            />
-                            <Marker
-                                position={cluster.center}
-                                icon={clusterBadgeIcon(cluster.count)}
-                                interactive={false}
-                            />
-                        </React.Fragment>
-                    ))}
+                    {harborClusters.map((cluster, cIdx) => {
+                        const clusterId = cluster.id || `cluster-${cIdx}`;
+                        const clusterCenter = cluster.center || (
+                            cluster.hull && cluster.hull.length > 0
+                                ? [
+                                    cluster.hull.reduce((sum, p) => sum + p[0], 0) / cluster.hull.length,
+                                    cluster.hull.reduce((sum, p) => sum + p[1], 0) / cluster.hull.length
+                                ]
+                                : null
+                        );
+
+                        return (
+                            <React.Fragment key={`harbor-hull-${clusterId}`}>
+                                <Polygon
+                                    positions={cluster.hull}
+                                    pathOptions={{
+                                        color: '#38bdf8',
+                                        weight: 1.2,
+                                        dashArray: '5, 6',
+                                        fillColor: '#0284c7',
+                                        fillOpacity: isNightMode ? 0.12 : 0.08,
+                                        interactive: false
+                                    }}
+                                />
+                                {clusterCenter && clusterCenter[0] != null && clusterCenter[1] != null && (
+                                    <Marker
+                                        position={clusterCenter}
+                                        icon={clusterBadgeIcon(cluster.count || cluster.hull.length)}
+                                        interactive={false}
+                                    />
+                                )}
+                            </React.Fragment>
+                        );
+                    })}
 
                     {/* SCIA DI NAVIGAZIONE PROPRIA (Vela: Ciano, Motore: Arancione) */}
                     {ownTrailSegments.map((seg, idx) => (
@@ -955,6 +973,7 @@ const AisView = ({ manager, isNightMode = false, initialMmsi = null }) => {
 
                     {/* BERSAGLI AIS CON OTTIMIZZAZIONE LOD, VIEWPORT CULLING E Z-INDEX DI PROFONDITÀ */}
                     {visibleMapTargets.map((v) => {
+                        if (v.lat == null || v.lon == null || isNaN(v.lat) || isNaN(v.lon)) return null;
                         const isMoving = v.isMoving !== undefined ? v.isMoving : (!v.isAnchored && v.sog >= 0.3);
                         const isSelected = selectedTarget?.id === v.id;
                         const ship = getShipTypeInfo(v.type);

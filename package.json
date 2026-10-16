@@ -25,9 +25,10 @@
     "tag": "latest"
   },
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host 0.0.0.0 --port 3000",
     "build": "vite build",
-    "preview": "vite preview",
+    "lint": "vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 3000",
     "release": "npm version patch && npm run build && git push && git push --tags && npm publish"
   },
   "dependencies": {
