@@ -4,8 +4,12 @@ import {
   ShieldCheck,
   Settings2,
   Loader2,
-  PlugZap
+  PlugZap,
+  Info
 } from 'lucide-react';
+
+// Versione dinamica iniettata automaticamente a build time da Vite leggendo package.json
+const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '2.2.9';
 
 const AdvancedView = ({ manager }) => {
     const { data, toggleSwitch, setShoreLimit, isUpdating } = manager;
@@ -21,7 +25,7 @@ const AdvancedView = ({ manager }) => {
         <div className="p-4 space-y-6 pb-32">
             
             {/* ============================================================
-                INTESTAZIONE E SPINNER DI CARICAMENTO
+                INTESTAZIONE E SPINNER DI CARICAMENTO + BADGE VERSIONE
                 ============================================================ */}
             <header className="px-2 pt-4 flex justify-between items-center">
                 <div>
@@ -32,6 +36,12 @@ const AdvancedView = ({ manager }) => {
                     <p className="text-[10px] text-gray-300 font-bold uppercase tracking-widest mt-1">
                         Gestione Sistemi di Bordo
                     </p>
+                </div>
+
+                {/* Badge versione dinamica nell'header */}
+                <div className="flex items-center gap-1.5 px-3 py-1 bg-white/5 rounded-xl border border-white/10 font-mono shadow-inner">
+                    <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Rel</span>
+                    <span className="text-xs font-black text-cyan-400">v{APP_VERSION}</span>
                 </div>
             </header>
 
@@ -103,7 +113,7 @@ const AdvancedView = ({ manager }) => {
                                     className={`flex-1 py-4 rounded-2xl font-black font-mono transition-all active:scale-90 border ${
                                         currentLimit === amps
                                             ? 'bg-cyan-500 border-cyan-400 text-white shadow-[0_0_20px_rgba(6,182,212,0.4)]'
-                                            : 'bg-white/5 border-white/5 text-gray-300 hover:bg-white/10'
+                                             : 'bg-white/5 border-white/5 text-gray-300 hover:bg-white/10'
                                     }`}
                                 >
                                     {amps}A
@@ -127,6 +137,20 @@ const AdvancedView = ({ manager }) => {
                     </div>
 
                 </div>
+            </div>
+
+            {/* ============================================================
+                FOOTER INFO APPLICAZIONE & VERSIONE AUTOMATICA
+                ============================================================ */}
+            <div className="pt-6 border-t border-white/5 flex flex-col items-center justify-center gap-2 text-center select-none">
+                <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/5 border border-white/10 font-mono text-[10px] shadow-inner">
+                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shadow-[0_0_8px_#22d3ee]"></span>
+                    <span className="font-bold text-gray-300">Rotevista WebApp</span>
+                    <span className="text-cyan-400 font-black">v{APP_VERSION}</span>
+                </div>
+                <p className="text-[9px] font-mono text-gray-500 uppercase tracking-widest">
+                    Signal K Marine Dashboard • Build Automatica
+                </p>
             </div>
         </div>
     );
