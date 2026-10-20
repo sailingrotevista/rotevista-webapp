@@ -662,11 +662,11 @@ const HomeView = ({ manager, onTabChange }) => {
             {/* --- SEZIONE 2 & 3: TEMPERATURE E INTERRUTTORI --- */}
             <div className="flex flex-col md:flex-row gap-2 landscape:gap-2 w-full">
                 {/* Temperature */}
-                <div className="w-full md:w-1/2 grid grid-cols-4 md:grid-cols-2 gap-2">
+                <div className="w-full md:w-1/2 grid grid-cols-4 md:grid-cols-2 auto-rows-fr gap-2">
                     <div onClick={() => onTabChange(2)} className="cursor-pointer active:scale-95 transition-transform h-full">
-                        <TempCard icon={<Thermometer size={18}/>} title="POZZ." val={data?.environment?.temp_pozzetto} color="text-yellow-500" />
+                        <TempCard icon={<Thermometer size={18}/>} title="POZZ." val={data?.environment?.temp_pozzetto} humidity={data?.environment?.hum_pozzetto} color="text-yellow-500" />
                     </div>
-                    <TempCard icon={<Sofa size={18}/>} title="QUADR." val={data?.environment?.temp_quadrato} color="text-orange-500" />
+                    <TempCard icon={<Sofa size={18}/>} title="QUADR." val={data?.environment?.temp_quadrato} humidity={data?.environment?.hum_quadrato} color="text-orange-500" />
                     <TempCard icon={<Snowflake size={18}/>} title="FRIGO" val={data?.environment?.temp_frigo} color="text-cyan-400" valueColor={getHybridTempColor(data?.environment?.temp_frigo)} />
                     <TempCard icon={<Snowflake size={18}/>} title="FREEZER" val={data?.environment?.temp_freezer} color="text-blue-500" valueColor={getHybridTempColor(data?.environment?.temp_freezer)} />
                 </div>
@@ -1324,13 +1324,57 @@ const StatusBox = ({ icon, title, value, sub }) => (
     </div>
 );
 
-const TempCard = ({ icon, title, val, color, valueColor = "text-white" }) => (
-    <div className="bg-white/5 py-4 landscape:py-3 rounded-3xl border border-white/5 flex flex-col items-center gap-1 text-center shadow-md hover:bg-white/10 transition-colors h-full justify-center text-white">
-        <div className={color}>{icon}</div>
-        <div className="text-[8px] font-black text-gray-300 uppercase tracking-tighter mt-1">{title}</div>
-        <div className={`text-lg font-black ${valueColor}`}>{val?.toFixed(1) || '-'}°</div>
-    </div>
-);
+const getComfortBadge = (temp, hum) => {
+    if (hum === undefined || hum === null || isNaN(hum)) return null;
+    const t = typeof temp === 'number' && !isNaN(temp) ? temp : 20;
+
+    // 1. Aria molto secca (Cactus)
+    if (hum < 35 || (hum < 40 && t > 21)) {
+        return { icon: '🌵', color: 'text-amber-400' };
+    }
+
+    // 2. Altissima umidità / Condensa / Afa (Ombrello)
+    if (hum >= 82 || (t < 17 && hum >= 75) || (t > 27 && hum >= 75)) {
+        return { icon: '☂️', color: 'text-blue-400' };
+    }
+
+    // 3. Umidità elevata (Goccia)
+    if (hum >= 66 || (t >= 25 && hum >= 60)) {
+        return { icon: '💧', color: 'text-cyan-400' };
+    }
+
+    // 4. Comfort ottimale (Faccina)
+    return { icon: '😊', color: 'text-emerald-400' };
+};
+
+const TempCard = ({ icon, title, val, color, valueColor = "text-white", humidity = null }) => {
+    const comfort = humidity !== null && humidity !== undefined ? getComfortBadge(val, humidity) : null;
+
+    return (
+        <div className="bg-white/5 p-3 sm:p-4 rounded-3xl border border-white/5 flex flex-col md:flex-row landscape:flex-row items-center md:items-stretch landscape:items-stretch justify-between text-white shadow-md hover:bg-white/10 transition-colors h-full min-h-[90px]">
+            {/* Blocco Sinistro: Icona + Titolo in alto, Temperatura grande allineata in alto sotto al titolo */}
+            <div className="flex flex-col items-center md:items-start landscape:items-start justify-start h-full py-0.5 min-w-0">
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                    <div className={color}>{React.cloneElement(icon, { size: 19 })}</div>
+                    <span className="text-[10px] sm:text-[11px] font-black text-gray-300 uppercase tracking-widest truncate">{title}</span>
+                </div>
+                <div className={`text-2xl sm:text-3xl font-black tracking-tight leading-none mt-2 sm:mt-2.5 ${valueColor}`}>
+                    {val !== undefined && val !== null && !isNaN(val) ? val.toFixed(1) : '-'}°
+                </div>
+            </div>
+
+            {/* Colonna Destra (30%): Umidità & Benessere allineata in alto */}
+            {comfort ? (
+                <div className={`flex flex-row md:flex-col landscape:flex-col items-center justify-start md:pt-1 landscape:pt-1 gap-1.5 mt-1.5 md:mt-0 landscape:mt-0 md:pl-3 landscape:pl-3 md:border-l landscape:border-l md:border-white/10 landscape:border-white/10 flex-shrink-0 ${comfort.color}`}>
+                    <span className="text-base sm:text-xl leading-none">{comfort.icon}</span>
+                    <span className="text-[10px] sm:text-xs font-mono font-bold leading-none">{humidity.toFixed(0)}%</span>
+                </div>
+            ) : (
+                <div className="hidden md:block landscape:block w-0" />
+            )}
+        </div>
+    );
+};
 
 const QuickActionRow = ({ icon, name, isOn, onToggle, disabled }) => (
     <div className={`flex flex-1 items-center justify-between p-5 landscape:p-4 bg-white/[0.02] text-white transition-all ${disabled ? 'pointer-events-none opacity-40' : 'hover:bg-white/5'}`}>

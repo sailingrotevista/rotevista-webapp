@@ -97,6 +97,7 @@ const createInitialMockBoatData = () => ({
         temp_pozzetto: 23.4,
         hum_pozzetto: 62,
         temp_quadrato: 21.8,
+        hum_quadrato: 58,
         temp_frigo: 4.1,
         temp_freezer: -14.8,
         temp_forecast: 24.0,
@@ -314,7 +315,8 @@ export const useBoatData = () => {
                     environment: {
                         ...prev.environment,
                         wind_now: Math.max(0, parseFloat((prev.environment.wind_now + windFluct).toFixed(1))),
-                        wind_dir_rel: Math.round((prev.environment.wind_dir_rel + (Math.random() - 0.5) * 2 + 360) % 360)
+                        wind_dir_rel: Math.round((prev.environment.wind_dir_rel + (Math.random() - 0.5) * 2 + 360) % 360),
+                        hum_quadrato: prev.environment?.hum_quadrato || 58
                     }
                 };
             });

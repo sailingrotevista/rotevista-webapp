@@ -1,0 +1,827 @@
+[
+    {
+        "id": "a4fa68e69bdc0ac7",
+        "type": "tab",
+        "label": "Log Dati Ambientali v2.6 (Safe)",
+        "disabled": false,
+        "locked": true,
+        "info": "Basato su backup stabile. Integrati fix Buffer 405 e Vento Daily."
+    },
+    {
+        "id": "b983f571085d7565",
+        "type": "victron-input-system",
+        "z": "a4fa68e69bdc0ac7",
+        "outputs": 1,
+        "service": "com.victronenergy.system/0",
+        "path": "/Dc/System/Power",
+        "serviceObj": {
+            "service": "com.victronenergy.system/0",
+            "name": "Venus system",
+            "communityTag": "system"
+        },
+        "pathObj": {
+            "path": "/Dc/System/Power",
+            "type": "float",
+            "name": "DC System (W)"
+        },
+        "name": "DC Watt",
+        "onlyChanges": true,
+        "roundValues": "0",
+        "rateLimit": "1",
+        "conditionalMode": false,
+        "outputTrue": "",
+        "outputFalse": "",
+        "debounce": "",
+        "x": 100,
+        "y": 60,
+        "wires": [
+            [
+                "0991aa4e4bebefd2"
+            ]
+        ]
+    },
+    {
+        "id": "0991aa4e4bebefd2",
+        "type": "function",
+        "z": "a4fa68e69bdc0ac7",
+        "name": "Logica: DC",
+        "func": "// ==========================================================================\n// LOGICA INTEGRALE ENERGIA DC ( Wh ) - REVISIONATO E ROBUSTO\n// ==========================================================================\n\nlet now = Date.now();\nlet dc_wh = global.get('dc_wh') || 0;\n\n// Recuperiamo ultimo timestamp e ultima potenza dallo scope globale (sincronizzato con reset mezzanotte)\nlet lastT = global.get('log_dc_last_t') || now;\nlet lastWatts = global.get('log_dc_last_watts') || 0;\n\nlet newWatts = Math.abs(parseFloat(msg.payload)) || 0;\n\n// Tempo trascorso dall'ultima lettura (in ore)\nlet tDiffHours = (now - lastT) / 3600000;\n\n// 1. INTEGRALE MATEMATICO\n// Calcoliamo l'energia consumata nel periodo trascorso usando 'lastWatts'\n// Tetto di sicurezza a 12 ore per evitare sbalzi se il Cerbo è stato spento per giorni\nif (tDiffHours > 0 && tDiffHours < 12) {\n    let addedWh = lastWatts * tDiffHours;\n    dc_wh += addedWh;\n}\n\n// 2. SALVATAGGIO STATO GLOBALE\nglobal.set('dc_wh', dc_wh);\nglobal.set('log_dc_last_t', now);\nglobal.set('log_dc_last_watts', newWatts);\n\n// 3. STATUS VISIVO SU NODE-RED\nlet displayStr = (dc_wh >= 1000) ? (dc_wh / 1000).toFixed(2) + \" kWh\" : dc_wh.toFixed(0) + \" Wh\";\nnode.status({ fill: \"red\", shape: \"dot\", text: `${displayStr} (Ora: ${newWatts.toFixed(0)}W)` });\n\nreturn null;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 290,
+        "y": 60,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "803c7cda56803b22",
+        "type": "victron-input-gps",
+        "z": "a4fa68e69bdc0ac7",
+        "outputs": 1,
+        "service": "com.victronenergy.gps/0",
+        "path": "/Position/Latitude",
+        "serviceObj": {
+            "service": "com.victronenergy.gps/0",
+            "name": "NMEA-0183 GPS (ACM0)",
+            "communityTag": "gps"
+        },
+        "pathObj": {
+            "path": "/Position/Latitude",
+            "type": "float",
+            "name": "Latitude (LAT)"
+        },
+        "name": "Lat",
+        "onlyChanges": true,
+        "roundValues": "3",
+        "rateLimit": "0.2",
+        "conditionalMode": false,
+        "outputTrue": "",
+        "outputFalse": "",
+        "debounce": "",
+        "x": 490,
+        "y": 120,
+        "wires": [
+            [
+                "b8cbd026c3b81e80"
+            ]
+        ]
+    },
+    {
+        "id": "3e931d32a0a5061b",
+        "type": "victron-input-gps",
+        "z": "a4fa68e69bdc0ac7",
+        "outputs": 1,
+        "service": "com.victronenergy.gps/0",
+        "path": "/Position/Longitude",
+        "serviceObj": {
+            "service": "com.victronenergy.gps/0",
+            "name": "NMEA-0183 GPS (ACM0)",
+            "communityTag": "gps"
+        },
+        "pathObj": {
+            "path": "/Position/Longitude",
+            "type": "float",
+            "name": "Longitude (LNG)"
+        },
+        "name": "Lon",
+        "onlyChanges": true,
+        "roundValues": "3",
+        "rateLimit": "0.2",
+        "conditionalMode": false,
+        "outputTrue": "",
+        "outputFalse": "",
+        "debounce": "",
+        "x": 90,
+        "y": 120,
+        "wires": [
+            [
+                "133aec594b61198b"
+            ]
+        ]
+    },
+    {
+        "id": "b8cbd026c3b81e80",
+        "type": "function",
+        "z": "a4fa68e69bdc0ac7",
+        "name": "Logica: Lat",
+        "func": "let val = parseFloat(msg.payload);\nif (!isNaN(val) && val !== 0) global.set('log_lat', val);\nreturn null;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 670,
+        "y": 120,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "133aec594b61198b",
+        "type": "function",
+        "z": "a4fa68e69bdc0ac7",
+        "name": "Logica: Lon",
+        "func": "let val = parseFloat(msg.payload);\nif (!isNaN(val) && val !== 0) global.set('log_lon', val);\nreturn null;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 290,
+        "y": 120,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "b5b631ffbb5cf2b3",
+        "type": "victron-input-battery",
+        "z": "a4fa68e69bdc0ac7",
+        "outputs": 1,
+        "service": "com.victronenergy.battery/278",
+        "path": "/Soc",
+        "serviceObj": {
+            "service": "com.victronenergy.battery/278",
+            "name": "Rotevista BMV",
+            "communityTag": "battery"
+        },
+        "pathObj": {
+            "path": "/Soc",
+            "type": "float",
+            "name": "State of charge (%)"
+        },
+        "name": "SOC",
+        "onlyChanges": true,
+        "roundValues": "1",
+        "rateLimit": "0.2",
+        "conditionalMode": false,
+        "outputTrue": "",
+        "outputFalse": "",
+        "debounce": "",
+        "x": 90,
+        "y": 180,
+        "wires": [
+            [
+                "f6369423c0c99e5a"
+            ]
+        ]
+    },
+    {
+        "id": "f6369423c0c99e5a",
+        "type": "function",
+        "z": "a4fa68e69bdc0ac7",
+        "name": "Logica: SOC MinMax",
+        "func": "let soc = parseFloat(msg.payload);\nif (isNaN(soc)) return null;\nlet sMin = global.get('batt_soc_min_today');\nlet sMax = global.get('batt_soc_max_today');\nif (sMin === undefined || sMin === null) sMin = soc;\nif (sMax === undefined || sMax === null) sMax = soc;\nif (soc < sMin) sMin = soc;\nif (soc > sMax) sMax = soc;\nglobal.set('batt_soc', soc);\nglobal.set('batt_soc_min_today', sMin);\nglobal.set('batt_soc_max_today', sMax);\nnode.status({\n    fill: \"blue\", \n    shape: \"dot\", \n    text: \"Min: \" + sMin.toFixed(1) + \"% | Max: \" + sMax.toFixed(1) + \"%\"\n});\nreturn null;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 320,
+        "y": 180,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "51cb99ed20180b85",
+        "type": "victron-input-temperature",
+        "z": "a4fa68e69bdc0ac7",
+        "outputs": 1,
+        "service": "com.victronenergy.temperature/23",
+        "path": "/Temperature",
+        "serviceObj": {
+            "service": "com.victronenergy.temperature/23",
+            "name": "Pozzetto"
+        },
+        "pathObj": {
+            "path": "/Temperature",
+            "type": "float",
+            "name": "Temperature (°C)"
+        },
+        "name": "Temp",
+        "onlyChanges": true,
+        "roundValues": "1",
+        "x": 90,
+        "y": 240,
+        "wires": [
+            [
+                "c78cf09fb3e22df5"
+            ]
+        ]
+    },
+    {
+        "id": "8aac5a468e44f74d",
+        "type": "victron-input-temperature",
+        "z": "a4fa68e69bdc0ac7",
+        "outputs": 1,
+        "service": "com.victronenergy.temperature/23",
+        "path": "/Humidity",
+        "serviceObj": {
+            "service": "com.victronenergy.temperature/23",
+            "name": "Pozzetto",
+            "communityTag": "temperature"
+        },
+        "pathObj": {
+            "path": "/Humidity",
+            "type": "float",
+            "name": "Humidity (%)"
+        },
+        "name": "Hum",
+        "onlyChanges": true,
+        "roundValues": "0",
+        "rateLimit": "0.2",
+        "conditionalMode": false,
+        "outputTrue": "",
+        "outputFalse": "",
+        "debounce": "",
+        "x": 490,
+        "y": 240,
+        "wires": [
+            [
+                "b3b4c239e73861f2"
+            ]
+        ]
+    },
+    {
+        "id": "c78cf09fb3e22df5",
+        "type": "function",
+        "z": "a4fa68e69bdc0ac7",
+        "name": "Logica: Temp MinMax",
+        "func": "let t = parseFloat(msg.payload);\nif (isNaN(t)) return null;\nlet tMin = global.get('temp_pozzetto_min_today');\nlet tMax = global.get('temp_pozzetto_max_today');\nif (tMin === undefined || tMin === null) tMin = t;\nif (tMax === undefined || tMax === null) tMax = t;\nif (t < tMin) tMin = t;\nif (t > tMax) tMax = t;\nglobal.set('lastTemp', t);\nglobal.set('temp_pozzetto_min_today', tMin);\nglobal.set('temp_pozzetto_max_today', tMax);\nnode.status({\n    fill: \"yellow\",\n    shape: \"dot\",\n    text: \"Min: \" + tMin.toFixed(1) + \"°C | Max: \" + tMax.toFixed(1) + \"°C\"\n});\nreturn null;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 320,
+        "y": 240,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "b3b4c239e73861f2",
+        "type": "function",
+        "z": "a4fa68e69bdc0ac7",
+        "name": "Logica: Hum MinMax",
+        "func": "let h = parseFloat(msg.payload);\nif (isNaN(h)) return null;\nlet hMin = global.get('hum_pozzetto_min_today');\nlet hMax = global.get('hum_pozzetto_max_today');\nif (hMin === undefined || hMin === null) hMin = h;\nif (hMax === undefined || hMax === null) hMax = h;\nif (h < hMin) hMin = h;\nif (h > hMax) hMax = h;\nglobal.set('lastHum', h);\nglobal.set('hum_pozzetto_min_today', hMin);\nglobal.set('hum_pozzetto_max_today', hMax);\nnode.status({fill:\"green\", shape:\"dot\", text: \"Min: \"+hMin+\"% | Max: \"+hMax+\"%\"});\nreturn null;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 700,
+        "y": 240,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "5ced8c96fc1b82f0",
+        "type": "victron-input-solarcharger",
+        "z": "a4fa68e69bdc0ac7",
+        "outputs": 1,
+        "service": "com.victronenergy.solarcharger/288",
+        "path": "/History/Daily/1/Yield",
+        "serviceObj": {
+            "service": "com.victronenergy.solarcharger/288",
+            "name": "Rotevista Prua",
+            "communityTag": "solarcharger"
+        },
+        "pathObj": {
+            "path": "/History/Daily/1/Yield",
+            "type": "float",
+            "name": "Yield yesterday (kWh)"
+        },
+        "name": "Y Prua",
+        "onlyChanges": true,
+        "roundValues": "no",
+        "rateLimit": "0.2",
+        "conditionalMode": false,
+        "outputTrue": "",
+        "outputFalse": "",
+        "debounce": "",
+        "x": 490,
+        "y": 360,
+        "wires": [
+            [
+                "3f83de0b1eb54c2c"
+            ]
+        ]
+    },
+    {
+        "id": "171a1e99fbd7183a",
+        "type": "victron-input-solarcharger",
+        "z": "a4fa68e69bdc0ac7",
+        "outputs": 1,
+        "service": "com.victronenergy.solarcharger/288",
+        "path": "/History/Daily/1/MaxPower",
+        "serviceObj": {
+            "service": "com.victronenergy.solarcharger/288",
+            "name": "Rotevista Prua",
+            "communityTag": "solarcharger"
+        },
+        "pathObj": {
+            "path": "/History/Daily/1/MaxPower",
+            "type": "float",
+            "name": "Maximum charge power yesterday (W)"
+        },
+        "name": "P Prua",
+        "onlyChanges": true,
+        "roundValues": "no",
+        "rateLimit": "0.2",
+        "conditionalMode": false,
+        "outputTrue": "",
+        "outputFalse": "",
+        "debounce": "",
+        "x": 90,
+        "y": 360,
+        "wires": [
+            [
+                "eeaae0532b8222a7"
+            ]
+        ]
+    },
+    {
+        "id": "d77a83b248f272d1",
+        "type": "victron-input-solarcharger",
+        "z": "a4fa68e69bdc0ac7",
+        "outputs": 1,
+        "service": "com.victronenergy.solarcharger/279",
+        "path": "/History/Daily/1/Yield",
+        "serviceObj": {
+            "service": "com.victronenergy.solarcharger/279",
+            "name": "Rotevista Poppa",
+            "communityTag": "solarcharger"
+        },
+        "pathObj": {
+            "path": "/History/Daily/1/Yield",
+            "type": "float",
+            "name": "Yield yesterday (kWh)"
+        },
+        "name": "Y Poppa",
+        "onlyChanges": true,
+        "roundValues": "no",
+        "rateLimit": "0.2",
+        "conditionalMode": false,
+        "outputTrue": "",
+        "outputFalse": "",
+        "debounce": "",
+        "x": 500,
+        "y": 420,
+        "wires": [
+            [
+                "126fdf6c91f9b8d0"
+            ]
+        ]
+    },
+    {
+        "id": "7a8dcfb7d6bc0ed7",
+        "type": "victron-input-solarcharger",
+        "z": "a4fa68e69bdc0ac7",
+        "outputs": 1,
+        "service": "com.victronenergy.solarcharger/279",
+        "path": "/History/Daily/1/MaxPower",
+        "serviceObj": {
+            "service": "com.victronenergy.solarcharger/279",
+            "name": "Rotevista Poppa",
+            "communityTag": "solarcharger"
+        },
+        "pathObj": {
+            "path": "/History/Daily/1/MaxPower",
+            "type": "float",
+            "name": "Maximum charge power yesterday (W)"
+        },
+        "name": "P Poppa",
+        "onlyChanges": true,
+        "roundValues": "no",
+        "rateLimit": "0.2",
+        "conditionalMode": false,
+        "outputTrue": "",
+        "outputFalse": "",
+        "debounce": "",
+        "x": 100,
+        "y": 420,
+        "wires": [
+            [
+                "15a9818007540d3f"
+            ]
+        ]
+    },
+    {
+        "id": "3f83de0b1eb54c2c",
+        "type": "function",
+        "z": "a4fa68e69bdc0ac7",
+        "name": "Log Y Prua",
+        "func": "global.set('log_y_prua', parseFloat(msg.payload) || 0); return null;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 670,
+        "y": 360,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "eeaae0532b8222a7",
+        "type": "function",
+        "z": "a4fa68e69bdc0ac7",
+        "name": "Log P Prua",
+        "func": "global.set('log_p_prua', parseFloat(msg.payload) || 0); return null;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 290,
+        "y": 360,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "126fdf6c91f9b8d0",
+        "type": "function",
+        "z": "a4fa68e69bdc0ac7",
+        "name": "Log Y Poppa",
+        "func": "global.set('log_y_poppa', parseFloat(msg.payload) || 0); return null;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 670,
+        "y": 420,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "15a9818007540d3f",
+        "type": "function",
+        "z": "a4fa68e69bdc0ac7",
+        "name": "Log P Poppa",
+        "func": "global.set('log_p_poppa', parseFloat(msg.payload) || 0); return null;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 290,
+        "y": 420,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "e48156e349e19d4e",
+        "type": "victron-input-temperature",
+        "z": "a4fa68e69bdc0ac7",
+        "outputs": 1,
+        "service": "com.victronenergy.temperature/21",
+        "path": "/Temperature",
+        "serviceObj": {
+            "service": "com.victronenergy.temperature/21",
+            "name": "Quadrato",
+            "communityTag": "temperature"
+        },
+        "pathObj": {
+            "path": "/Temperature",
+            "type": "float",
+            "name": "Temperature (°C)"
+        },
+        "name": "Ruuvi Quadrato",
+        "onlyChanges": true,
+        "roundValues": "1",
+        "rateLimit": "0.2",
+        "conditionalMode": false,
+        "outputTrue": "",
+        "outputFalse": "",
+        "debounce": "",
+        "x": 120,
+        "y": 300,
+        "wires": [
+            [
+                "1b76ec2f47224322"
+            ]
+        ]
+    },
+    {
+        "id": "1b76ec2f47224322",
+        "type": "function",
+        "z": "a4fa68e69bdc0ac7",
+        "name": "Logica: Temp Q MinMax",
+        "func": "let t = parseFloat(msg.payload);\nif (isNaN(t)) return null;\nlet qMin = global.get('temp_quadrato_min_today');\nlet qMax = global.get('temp_quadrato_max_today');\nif (qMin === undefined || qMin === null) qMin = t;\nif (qMax === undefined || qMax === null) qMax = t;\nif (t < qMin) qMin = t;\nif (t > qMax) qMax = t;\nglobal.set('lastTempQ', t);\nglobal.set('temp_quadrato_min_today', qMin);\nglobal.set('temp_quadrato_max_today', qMax);\nnode.status({fill:\"orange\", shape:\"dot\", text: \"Min: \" + qMin.toFixed(1) + \" | Max: \" + qMax.toFixed(1)});\nreturn null;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 330,
+        "y": 300,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "7009834e7f4e2617",
+        "type": "victron-input-temperature",
+        "z": "a4fa68e69bdc0ac7",
+        "outputs": 1,
+        "service": "com.victronenergy.temperature/22",
+        "path": "/Temperature",
+        "serviceObj": {
+            "service": "com.victronenergy.temperature/22",
+            "name": "Freezer",
+            "communityTag": "temperature"
+        },
+        "pathObj": {
+            "path": "/Temperature",
+            "type": "float",
+            "name": "Temperature (°C)"
+        },
+        "name": "Freezer",
+        "onlyChanges": true,
+        "roundValues": "1",
+        "rateLimit": "1",
+        "conditionalMode": false,
+        "outputTrue": "",
+        "outputFalse": "",
+        "debounce": "",
+        "x": 90,
+        "y": 540,
+        "wires": [
+            [
+                "7ac44864f8a730c8"
+            ]
+        ]
+    },
+    {
+        "id": "be734230347390db",
+        "type": "victron-input-temperature",
+        "z": "a4fa68e69bdc0ac7",
+        "outputs": 1,
+        "service": "com.victronenergy.temperature/20",
+        "path": "/Temperature",
+        "serviceObj": {
+            "service": "com.victronenergy.temperature/20",
+            "name": "Frigorifero",
+            "communityTag": "temperature"
+        },
+        "pathObj": {
+            "path": "/Temperature",
+            "type": "float",
+            "name": "Temperature (°C)"
+        },
+        "name": "Frigorifero",
+        "onlyChanges": true,
+        "roundValues": "1",
+        "rateLimit": "1",
+        "conditionalMode": false,
+        "outputTrue": "",
+        "outputFalse": "",
+        "debounce": "",
+        "x": 500,
+        "y": 540,
+        "wires": [
+            [
+                "648ec7420b6bc082"
+            ]
+        ]
+    },
+    {
+        "id": "648ec7420b6bc082",
+        "type": "function",
+        "z": "a4fa68e69bdc0ac7",
+        "name": "Temp Frigorifero",
+        "func": "global.set('temp_frigo', parseFloat(msg.payload)); return null;",
+        "outputs": 1,
+        "x": 680,
+        "y": 540,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "7ac44864f8a730c8",
+        "type": "function",
+        "z": "a4fa68e69bdc0ac7",
+        "name": "Temp Freezer",
+        "func": "global.set('temp_freezer', parseFloat(msg.payload)); return null;",
+        "outputs": 1,
+        "x": 300,
+        "y": 540,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "c8e8b958eeb69c7f",
+        "type": "function",
+        "z": "a4fa68e69bdc0ac7",
+        "name": "Assemblatore Finale",
+        "func": "const toIta = (num, dec = 1) => {\n    let n = parseFloat(num);\n    if (isNaN(n)) return \"0\";\n    return n.toFixed(dec).replace('.', ',');\n};\n\nlet d = new Date();\nlet ts = d.getFullYear() + \"-\" + (\"0\"+(d.getMonth()+1)).slice(-2) + \"-\" + (\"0\"+d.getDate()).slice(-2) + \" \" + (\"0\"+d.getHours()).slice(-2) + \":\" + (\"0\"+d.getMinutes()).slice(-2);\n\nlet cSoc = global.get('batt_soc') || 0;\nlet cWind = global.get('wind_now') || 0;\nlet cTempQ = global.get('lastTempQ') || 0;\nlet cTempP = global.get('lastTemp') || 0;\nlet cHum = global.get('lastHum') || 0;\n\n// Risoluzione bug del Falso 0 per minimi e massimi giornalieri\nlet socMin = global.get('batt_soc_min_today');\nif (socMin === undefined || socMin === null) socMin = cSoc;\n\nlet socMax = global.get('batt_soc_max_today');\nif (socMax === undefined || socMax === null) socMax = cSoc;\n\nlet tqMin = global.get('temp_quadrato_min_today');\nif (tqMin === undefined || tqMin === null) tqMin = cTempQ;\n\nlet tqMax = global.get('temp_quadrato_max_today');\nif (tqMax === undefined || tqMax === null) tqMax = cTempQ;\n\nlet tpMin = global.get('temp_pozzetto_min_today');\nif (tpMin === undefined || tpMin === null) tpMin = cTempP;\n\nlet tpMax = global.get('temp_pozzetto_max_today');\nif (tpMax === undefined || tpMax === null) tpMax = cTempP;\n\nlet humMin = global.get('hum_pozzetto_min_today');\nif (humMin === undefined || humMin === null) humMin = cHum;\n\nlet humMax = global.get('hum_pozzetto_max_today');\nif (humMax === undefined || humMax === null) humMax = cHum;\n\nmsg.payload = [\n    ts, \n    toIta(global.get('log_lat') || 0, 6),\n    toIta(global.get('log_lon') || 0, 6),\n    toIta(socMin, 1) + \"%\",\n    toIta(socMax, 1) + \"%\",\n    toIta(tqMin, 1),\n    toIta(tqMax, 1),\n    toIta(tpMin, 1),\n    toIta(tpMax, 1),\n    toIta(humMin, 1) + \"%\",\n    toIta(humMax, 1) + \"%\",\n    toIta((global.get('log_y_prua') || 0) * 1000, 0),\n    toIta(global.get('log_p_prua') || 0, 0),\n    toIta((global.get('log_y_poppa') || 0) * 1000, 0),\n    toIta(global.get('log_p_poppa') || 0, 0),\n    toIta(global.get('dc_wh') || 0, 0),\n    toIta(global.get('wMin') || cWind, 1),\n    toIta(global.get('wMax') || cWind, 1)\n];\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 380,
+        "y": 680,
+        "wires": [
+            [
+                "aa9529d5e54277c7"
+            ]
+        ]
+    },
+    {
+        "id": "aa9529d5e54277c7",
+        "type": "function",
+        "z": "a4fa68e69bdc0ac7",
+        "name": "Aggiungi a Buffer",
+        "func": "let buffer = global.get('log_retry_buffer') || [];\nbuffer.push(msg.payload);\nglobal.set('log_retry_buffer', buffer);\nnode.status({fill:\"blue\", text: \"Buffer: \" + buffer.length});\nreturn null;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 610,
+        "y": 680,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "ced93ecda0ad84c7",
+        "type": "inject",
+        "z": "a4fa68e69bdc0ac7",
+        "name": "Log 23:58",
+        "props": [
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "58 23 * * *",
+        "once": false,
+        "topic": "upload",
+        "x": 110,
+        "y": 680,
+        "wires": [
+            [
+                "c8e8b958eeb69c7f"
+            ]
+        ]
+    },
+    {
+        "id": "b5f2eab05aa35cfa",
+        "type": "inject",
+        "z": "a4fa68e69bdc0ac7",
+        "name": "Reset Mezzanotte",
+        "props": [],
+        "repeat": "",
+        "crontab": "05 00 * * *",
+        "once": false,
+        "x": 130,
+        "y": 740,
+        "wires": [
+            [
+                "dcf81a02adb2b773"
+            ]
+        ]
+    },
+    {
+        "id": "dcf81a02adb2b773",
+        "type": "function",
+        "z": "a4fa68e69bdc0ac7",
+        "name": "Esegui Reset",
+        "func": "// 1. Reset Energia DC e Tempo di Esecuzione (mantiene l'ultima potenza attiva per continuità)\nglobal.set('dc_wh', 0);\nglobal.set('log_dc_last_t', Date.now());\nif (global.get('log_dc_last_watts') === undefined) {\n    global.set('log_dc_last_watts', 0);\n}\n\n// 2. Reset Batteria (riparte dal valore attuale)\nlet currentSoc = global.get('batt_soc') || 0;\nglobal.set('batt_soc_min_today', currentSoc);\nglobal.set('batt_soc_max_today', currentSoc);\n\n// 3. Reset Temperature e Umidità Pozzetto (ripartono dai valori attuali)\nlet currentTemp = global.get('lastTemp');\nlet currentHum = global.get('lastHum');\nglobal.set('temp_pozzetto_min_today', currentTemp);\nglobal.set('temp_pozzetto_max_today', currentTemp);\nglobal.set('hum_pozzetto_min_today', currentHum);\nglobal.set('hum_pozzetto_max_today', currentHum);\n\n// 4. Reset Temperatura Quadrato\nlet currentTempQ = global.get('lastTempQ');\nglobal.set('temp_quadrato_min_today', currentTempQ);\nglobal.set('temp_quadrato_max_today', currentTempQ);\n\n// 5. Reset Vento (riparte dal valore attuale)\nlet lastW = global.get('wind_now') || 0;\nglobal.set('wMin', lastW);\nglobal.set('wMax', lastW);\n\nreturn null;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 350,
+        "y": 740,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "f65593eb3dc07db9",
+        "type": "inject",
+        "z": "a4fa68e69bdc0ac7",
+        "name": "Retry Engine (10m)",
+        "props": [],
+        "repeat": "600",
+        "once": true,
+        "onceDelay": "30",
+        "x": 140,
+        "y": 800,
+        "wires": [
+            [
+                "03e831b97f0e0789"
+            ]
+        ]
+    },
+    {
+        "id": "03e831b97f0e0789",
+        "type": "function",
+        "z": "a4fa68e69bdc0ac7",
+        "name": "Check Buffer",
+        "func": "let buffer = global.get('log_retry_buffer') || [];\nlet sheetUrl = global.get('G_SHEET_URL');\n\nnode.status({fill:\"grey\", shape:\"dot\", text: \"In coda: \" + buffer.length});\n\nif (buffer.length === 0) return null;\n\nmsg.url = sheetUrl.trim();\nmsg.payload = buffer[0];\nreturn msg;",
+        "outputs": 1,
+        "x": 350,
+        "y": 800,
+        "wires": [
+            [
+                "43960673b8dc8949"
+            ]
+        ]
+    },
+    {
+        "id": "43960673b8dc8949",
+        "type": "http request",
+        "z": "a4fa68e69bdc0ac7",
+        "name": "HTTP POST Google",
+        "method": "POST",
+        "ret": "txt",
+        "url": "",
+        "x": 580,
+        "y": 800,
+        "wires": [
+            [
+                "c4bc537dd1464c21"
+            ]
+        ]
+    },
+    {
+        "id": "c4bc537dd1464c21",
+        "type": "function",
+        "z": "a4fa68e69bdc0ac7",
+        "name": "Handle Response",
+        "func": "if (msg.statusCode === 200 || msg.statusCode === 302 || msg.statusCode === 405) {\n    let buffer = global.get('log_retry_buffer') || [];\n    if (buffer.length > 0) {\n        buffer.shift();\n        global.set('log_retry_buffer', buffer);\n    }\n    let count = buffer.length;\n    node.status({\n        fill: count > 0 ? \"blue\" : \"green\", \n        shape: \"dot\", \n        text: count > 0 ? \"Inviato. Rimasti: \" + count : \"Tutto inviato (Buffer vuoto)\"\n    });\n} else {\n    node.status({fill:\"red\", shape:\"ring\", text: \"Errore reale: \" + msg.statusCode});\n}\nreturn null;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 810,
+        "y": 800,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "c6b2ef5672f629d8",
+        "type": "global-config",
+        "env": [],
+        "modules": {
+            "@victronenergy/node-red-contrib-victron": "1.7.27"
+        }
+    }
+]

@@ -8,8 +8,7 @@ import {
   Info
 } from 'lucide-react';
 
-// Versione dinamica iniettata automaticamente a build time da Vite leggendo package.json
-const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '2.2.9';
+const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '2.2.10';
 
 const AdvancedView = ({ manager }) => {
     const { data, toggleSwitch, setShoreLimit, isUpdating } = manager;

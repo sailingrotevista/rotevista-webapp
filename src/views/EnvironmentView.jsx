@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
     Wind, Triangle, CloudRain, Thermometer,
     CloudSun, Moon, Cloud, Sun, ChevronDown,
-    CloudDrizzle, CloudLightning, ArrowRight
+    CloudDrizzle, CloudLightning, ArrowRight, Sofa
 } from 'lucide-react';
 
 // ============================================================
@@ -104,10 +104,13 @@ const EnvironmentView = ({ manager }) => {
                 <CompassCard title="REALE" windAngle={env.wind_dir_true} boatAngle={env.heading} color={getWindColor(env.wind_now)} isTrue={true} />
             </div>
 
-            {/* --- RIGA 2: TEMPERATURE --- */}
-            <div className="grid grid-cols-2 gap-2">
-                <EnvTempCard icon={<Thermometer className="text-yellow-500"/>} title="POZZETTO" val={env.temp_pozzetto} sub={`Umidità: ${env.hum_pozzetto.toFixed(0)}%`} />
-                <EnvTempCard icon={getWeatherIcon(env.hourly_forecast[0], 28)} title="MODELLO" val={env.temp_forecast} sub="OpenMeteo" />
+            {/* --- RIGA 2: TEMPERATURE & AMBIENTE --- */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                <EnvTempCard icon={<Thermometer className="text-yellow-500"/>} title="POZZETTO" val={env.temp_pozzetto} sub={`Umidità: ${env.hum_pozzetto !== undefined && env.hum_pozzetto !== null ? env.hum_pozzetto.toFixed(0) + '%' : '-'}`} />
+                <EnvTempCard icon={<Sofa className="text-orange-500"/>} title="QUADRATO" val={env.temp_quadrato} sub={`Umidità: ${env.hum_quadrato !== undefined && env.hum_quadrato !== null ? env.hum_quadrato.toFixed(0) + '%' : '-'}`} />
+                <div className="col-span-2 md:col-span-1">
+                    <EnvTempCard icon={getWeatherIcon(env.hourly_forecast[0], 28)} title="MODELLO" val={env.temp_forecast} sub="OpenMeteo" />
+                </div>
             </div>
 
             {/* --- RIGA 3: PREVISIONE 6 ORE --- */}
@@ -180,7 +183,7 @@ const EnvTempCard = ({ icon, title, val, sub }) => (
             <span className="text-[9px] font-black text-gray-300 uppercase tracking-widest font-mono whitespace-nowrap">{title}</span>
         </div>
         <div className="flex flex-col items-center landscape:items-end leading-tight text-white">
-            <span className="text-3xl landscape:text-2xl font-black text-white">{val.toFixed(1)}°</span>
+            <span className="text-3xl landscape:text-2xl font-black text-white">{typeof val === 'number' && !isNaN(val) ? val.toFixed(1) : '-'}°</span>
             <span className="text-[10px] landscape:text-[8px] font-bold text-gray-300 uppercase font-mono whitespace-nowrap opacity-80">{sub}</span>
         </div>
     </div>
